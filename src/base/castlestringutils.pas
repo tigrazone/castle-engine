@@ -86,6 +86,7 @@ type
       The comparison is case-sensitive, or not, depending on the value
       of CaseSensitive property of this list. }
     function Equals(SecondValue: TObject): boolean; override; overload;
+    function Equals(SecondValue: TStrings; const Epsilon: Single): boolean; overload;
 
     function Equals(const A: array of string): boolean; overload;
 
@@ -1031,21 +1032,24 @@ begin
 end;
 
 function TCastleStringList.Equals(SecondValue: TObject): boolean;
+begin
+  Result :=
+    (SecondValue is TStrings) and
+    Equals(TStrings(SecondValue), 0);
+end;
+
+function TCastleStringList.Equals(SecondValue: TStrings; const Epsilon: Single): boolean; overload;
 var
   I: Integer;
 begin
-  Result := SecondValue is TStrings;
+  Result := Count = SecondValue.Count;
   if Result then
-  begin
-    Result := Count = TStrings(SecondValue).Count;
-    if Result then
-      for I := 0 to Count - 1 do
-        if DoCompareText(Strings[I], TStrings(SecondValue)[I]) <> 0 then
-        begin
-          Result := false;
-          Exit;
-        end;
-  end;
+    for I := 0 to Count - 1 do
+      if DoCompareText(Strings[I], SecondValue[I]) <> 0 then
+      begin
+        Result := false;
+        Exit;
+      end;
 end;
 
 function TCastleStringList.Equals(const A: array of string): boolean;

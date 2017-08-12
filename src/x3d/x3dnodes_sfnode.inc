@@ -100,7 +100,7 @@
     procedure ParseXMLElement(Element: TDOMElement; Reader: TX3DReader); override;
 
     function EqualsDefaultValue: boolean; override;
-    function Equals(SecondValue: TX3DField): boolean; override;
+    function Equals(SecondValue: TX3DField; const Epsilon: Double): boolean; override;
 
     procedure Assign(Source: TPersistent); override;
     procedure AssignValue(Source: TX3DField); override;
@@ -416,9 +416,9 @@ begin
   Result := DefaultValueExists and (Value = DefaultValue);
 end;
 
-function TSFNode.Equals(SecondValue: TX3DField): boolean;
+function TSFNode.Equals(SecondValue: TX3DField; const Epsilon: Double): boolean;
 begin
- Result := (inherited Equals(SecondValue)) and
+ Result := (inherited Equals(SecondValue, Epsilon)) and
    (SecondValue is TSFNode) and
    (TSFNode(SecondValue).Value = Value);
 end;

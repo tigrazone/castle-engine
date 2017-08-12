@@ -27,16 +27,6 @@ type
   ELinesParallel = class(Exception);
 
 const
-  { Epsilon used by default when compating Single (Single-precision float values).
-    Compatible with Math unit value, used by standard routines like Math.SameValue
-    and Math.IsZero. }
-  SingleEpsilon = 1E-4;
-
-  { Epsilon used by default when compating Double (Double-precision float values).
-    Compatible with Math unit value, used by standard routines like Math.SameValue
-    and Math.IsZero. }
-  DoubleEpsilon = 1E-12;
-
   SingleEqualityEpsilon = SingleEpsilon deprecated 'use SingleEpsilon';
   DoubleEqualityEpsilon = DoubleEpsilon deprecated 'use DoubleEpsilon';
   ExtendedEqualityEpsilon = 1E-16 deprecated 'use only Math functions, like SameValue and IsZero, to operate on Extended type; CastleVectors unit does not deal with Extended type anymore';

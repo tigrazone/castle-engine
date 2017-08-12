@@ -218,7 +218,7 @@
       should override this like
 
       @longCode(#
-        Result := (inherited Equals(SecondValue)) and
+        Result := (inherited Equals(SecondValue, Epsilon)) and
           (SecondValue is TMyType) and
           (TMyType(SecondValue).MyProperty = MyProperty);
       #)
@@ -232,7 +232,7 @@
       parsing (like names for TSFEnum and TSFBitMask) or allowed
       future values (like TSFFloat.MustBeNonnegative).
     }
-    function Equals(SecondValue: TX3DField): boolean; virtual; reintroduce;
+    function Equals(SecondValue: TX3DField; const Epsilon: Double): boolean; virtual; reintroduce;
 
     { Compare value of this field, with other field, fast.
 
@@ -727,7 +727,7 @@ begin
   Result := false;
 end;
 
-function TX3DField.Equals(SecondValue: TX3DField): boolean;
+function TX3DField.Equals(SecondValue: TX3DField; const Epsilon: Double): boolean;
 begin
   Result := SecondValue.X3DName = X3DName;
 end;

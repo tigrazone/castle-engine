@@ -48,7 +48,8 @@ type
     { Does the SecondValue have equal length and content.
       The values are compared with an Epsilon tolerance, as usual for floating-point
       values. }
-    function Equals(SecondValue: TObject): boolean; override;
+    function Equals(SecondValue: TObject): boolean; override; overload;
+    function Equals(SecondValue: TVector2List; const Epsilon: Single): boolean; overload;
 
     { Does the SecondValue have equal length and content.
       The values are compared perfectly, without any tolerance for difference. }
@@ -111,7 +112,8 @@ type
     { Does the SecondValue have equal length and content.
       The values are compared with an Epsilon tolerance, as usual for floating-point
       values. }
-    function Equals(SecondValue: TObject): boolean; override;
+    function Equals(SecondValue: TObject): boolean; override; overload;
+    function Equals(SecondValue: TVector3List; const Epsilon: Single): boolean; overload;
 
     { Does the SecondValue have equal length and content.
       The values are compared perfectly, without any tolerance for difference. }
@@ -131,7 +133,8 @@ type
     { Does the SecondValue have equal length and content.
       The values are compared with an Epsilon tolerance, as usual for floating-point
       values. }
-    function Equals(SecondValue: TObject): boolean; override;
+    function Equals(SecondValue: TObject): boolean; override; overload;
+    function Equals(SecondValue: TVector4List; const Epsilon: Single): boolean; overload;
 
     { Does the SecondValue have equal length and content.
       The values are compared perfectly, without any tolerance for difference. }
@@ -148,7 +151,8 @@ type
     { Does the SecondValue have equal length and content.
       The values are compared with an Epsilon tolerance, as usual for floating-point
       values. }
-    function Equals(SecondValue: TObject): boolean; override;
+    function Equals(SecondValue: TObject): boolean; override; overload;
+    function Equals(SecondValue: TMatrix3List; const Epsilon: Single): boolean; overload;
 
     { Does the SecondValue have equal length and content.
       The values are compared perfectly, without any tolerance for difference. }
@@ -165,7 +169,8 @@ type
     { Does the SecondValue have equal length and content.
       The values are compared with an Epsilon tolerance, as usual for floating-point
       values. }
-    function Equals(SecondValue: TObject): boolean; override;
+    function Equals(SecondValue: TObject): boolean; override; overload;
+    function Equals(SecondValue: TMatrix4List; const Epsilon: Single): boolean; overload;
 
     { Does the SecondValue have equal length and content.
       The values are compared perfectly, without any tolerance for difference. }
@@ -243,21 +248,24 @@ begin
 end;
 
 function TVector2List.Equals(SecondValue: TObject): boolean;
+begin
+  Result :=
+    (SecondValue is TVector2List) and
+    Equals(TVector2List(SecondValue), SingleEpsilon);
+end;
+
+function TVector2List.Equals(SecondValue: TVector2List; const Epsilon: Single): boolean; overload;
 var
   I: Integer;
 begin
-  Result := SecondValue is TVector2List;
+  Result := Count = SecondValue.Count;
   if Result then
-  begin
-    Result := Count = TVector2List(SecondValue).Count;
-    if Result then
-      for I := 0 to Count - 1 do
-        if not TVector2.Equals(TVector2List(SecondValue).List^[I], List^[I]) then
-        begin
-          Result := false;
-          Exit;
-        end;
-  end;
+    for I := 0 to Count - 1 do
+      if not TVector2.Equals(SecondValue.List^[I], List^[I], Epsilon) then
+      begin
+        Result := false;
+        Exit;
+      end;
 end;
 
 function TVector2List.PerfectlyEquals(SecondValue: TObject): boolean;
@@ -420,21 +428,24 @@ begin
 end;
 
 function TVector3List.Equals(SecondValue: TObject): boolean;
+begin
+  Result :=
+    (SecondValue is TVector3List) and
+    Equals(TVector3List(SecondValue), SingleEpsilon);
+end;
+
+function TVector3List.Equals(SecondValue: TVector3List; const Epsilon: Single): boolean; overload;
 var
   I: Integer;
 begin
-  Result := SecondValue is TVector3List;
+  Result := Count = SecondValue.Count;
   if Result then
-  begin
-    Result := Count = TVector3List(SecondValue).Count;
-    if Result then
-      for I := 0 to Count - 1 do
-        if not TVector3.Equals(TVector3List(SecondValue).List^[I], List^[I]) then
-        begin
-          Result := false;
-          Exit;
-        end;
-  end;
+    for I := 0 to Count - 1 do
+      if not TVector3.Equals(SecondValue.List^[I], List^[I], Epsilon) then
+      begin
+        Result := false;
+        Exit;
+      end;
 end;
 
 function TVector3List.PerfectlyEquals(SecondValue: TObject): boolean;
@@ -486,21 +497,24 @@ begin
 end;
 
 function TVector4List.Equals(SecondValue: TObject): boolean;
+begin
+  Result :=
+    (SecondValue is TVector4List) and
+    Equals(TVector4List(SecondValue), SingleEpsilon);
+end;
+
+function TVector4List.Equals(SecondValue: TVector4List; const Epsilon: Single): boolean; overload;
 var
   I: Integer;
 begin
-  Result := SecondValue is TVector4List;
+  Result := Count = SecondValue.Count;
   if Result then
-  begin
-    Result := Count = TVector4List(SecondValue).Count;
-    if Result then
-      for I := 0 to Count - 1 do
-        if not TVector4.Equals(TVector4List(SecondValue).List^[I], List^[I]) then
-        begin
-          Result := false;
-          Exit;
-        end;
-  end;
+    for I := 0 to Count - 1 do
+      if not TVector4.Equals(SecondValue.List^[I], List^[I], Epsilon) then
+      begin
+        Result := false;
+        Exit;
+      end;
 end;
 
 function TVector4List.PerfectlyEquals(SecondValue: TObject): boolean;
@@ -537,21 +551,24 @@ begin
 end;
 
 function TMatrix3List.Equals(SecondValue: TObject): boolean;
+begin
+  Result :=
+    (SecondValue is TMatrix3List) and
+    Equals(TMatrix3List(SecondValue), SingleEpsilon);
+end;
+
+function TMatrix3List.Equals(SecondValue: TMatrix3List; const Epsilon: Single): boolean; overload;
 var
   I: Integer;
 begin
-  Result := SecondValue is TMatrix3List;
+  Result := Count = SecondValue.Count;
   if Result then
-  begin
-    Result := Count = TMatrix3List(SecondValue).Count;
-    if Result then
-      for I := 0 to Count - 1 do
-        if not TMatrix3.Equals(TMatrix3List(SecondValue).List^[I], List^[I]) then
-        begin
-          Result := false;
-          Exit;
-        end;
-  end;
+    for I := 0 to Count - 1 do
+      if not TMatrix3.Equals(SecondValue.List^[I], List^[I], Epsilon) then
+      begin
+        Result := false;
+        Exit;
+      end;
 end;
 
 function TMatrix3List.PerfectlyEquals(SecondValue: TObject): boolean;
@@ -588,21 +605,24 @@ begin
 end;
 
 function TMatrix4List.Equals(SecondValue: TObject): boolean;
+begin
+  Result :=
+    (SecondValue is TMatrix4List) and
+    Equals(TMatrix4List(SecondValue), SingleEpsilon);
+end;
+
+function TMatrix4List.Equals(SecondValue: TMatrix4List; const Epsilon: Single): boolean; overload;
 var
   I: Integer;
 begin
-  Result := SecondValue is TMatrix4List;
+  Result := Count = SecondValue.Count;
   if Result then
-  begin
-    Result := Count = TMatrix4List(SecondValue).Count;
-    if Result then
-      for I := 0 to Count - 1 do
-        if not TMatrix4.Equals(TMatrix4List(SecondValue).List^[I], List^[I]) then
-        begin
-          Result := false;
-          Exit;
-        end;
-  end;
+    for I := 0 to Count - 1 do
+      if not TMatrix4.Equals(SecondValue.List^[I], List^[I], Epsilon) then
+      begin
+        Result := false;
+        Exit;
+      end;
 end;
 
 function TMatrix4List.PerfectlyEquals(SecondValue: TObject): boolean;

@@ -76,7 +76,7 @@
 
     destructor Destroy; override;
 
-    function Equals(SecondValue: TX3DField): boolean; override;
+    function Equals(SecondValue: TX3DField; const Epsilon: Double): boolean; override;
 
     procedure Assign(Source: TPersistent); override;
     procedure AssignValue(Source: TX3DField); override;
@@ -98,7 +98,7 @@
 
     procedure ParseValue(Lexer: TX3DLexer; Reader: TX3DReader); override;
     function EqualsDefaultValue: boolean; override;
-    function Equals(SecondValue: TX3DField): boolean; override;
+    function Equals(SecondValue: TX3DField; const Epsilon: Double): boolean; override;
     function FastEqualsValue(SecondValue: TX3DField): boolean; override;
 
     procedure Assign(Source: TPersistent); override;
@@ -141,7 +141,7 @@
     procedure ParseValue(Lexer: TX3DLexer; Reader: TX3DReader); override;
 
     function EqualsDefaultValue: boolean; override;
-    function Equals(SecondValue: TX3DField): boolean; override;
+    function Equals(SecondValue: TX3DField; const Epsilon: Double): boolean; override;
 
     procedure Assign(Source: TPersistent); override;
     procedure AssignValue(Source: TX3DField); override;
@@ -187,7 +187,7 @@
     procedure ParseValue(Lexer: TX3DLexer; Reader: TX3DReader); override;
 
     function EqualsDefaultValue: boolean; override;
-    function Equals(SecondValue: TX3DField): boolean; override;
+    function Equals(SecondValue: TX3DField; const Epsilon: Double): boolean; override;
     function FastEqualsValue(SecondValue: TX3DField): boolean; override;
 
     procedure AssignLerp(const A: Double; Value1, Value2: TX3DField); override;
@@ -227,7 +227,7 @@
     procedure ParseValue(Lexer: TX3DLexer; Reader: TX3DReader); override;
 
     function EqualsDefaultValue: boolean; override;
-    function Equals(SecondValue: TX3DField): boolean; override;
+    function Equals(SecondValue: TX3DField; const Epsilon: Double): boolean; override;
     function FastEqualsValue(SecondValue: TX3DField): boolean; override;
 
     procedure AssignLerp(const A: Double; Value1, Value2: TX3DField); override;
@@ -285,7 +285,7 @@
 
     procedure ParseValue(Lexer: TX3DLexer; Reader: TX3DReader); override;
 
-    function Equals(SecondValue: TX3DField): boolean; override;
+    function Equals(SecondValue: TX3DField; const Epsilon: Double): boolean; override;
 
     procedure Assign(Source: TPersistent); override;
     procedure AssignValue(Source: TX3DField); override;
@@ -319,7 +319,7 @@
     procedure ParseValue(Lexer: TX3DLexer; Reader: TX3DReader); override;
 
     function EqualsDefaultValue: boolean; override;
-    function Equals(SecondValue: TX3DField): boolean; override;
+    function Equals(SecondValue: TX3DField; const Epsilon: Double): boolean; override;
     function FastEqualsValue(SecondValue: TX3DField): boolean; override;
 
     procedure Assign(Source: TPersistent); override;
@@ -363,7 +363,7 @@
     procedure ParseValue(Lexer: TX3DLexer; Reader: TX3DReader); override;
 
     function EqualsDefaultValue: boolean; override;
-    function Equals(SecondValue: TX3DField): boolean; override;
+    function Equals(SecondValue: TX3DField; const Epsilon: Double): boolean; override;
     function FastEqualsValue(SecondValue: TX3DField): boolean; override;
 
     procedure AssignLerp(const A: Double; Value1, Value2: TX3DField); override;
@@ -468,7 +468,7 @@
     { Rotate point Pt around Self. }
     function RotatedPoint(const pt: TVector3): TVector3;
 
-    function Equals(SecondValue: TX3DField): boolean; override;
+    function Equals(SecondValue: TX3DField; const Epsilon: Double): boolean; override;
     function EqualsDefaultValue: boolean; override;
     function FastEqualsValue(SecondValue: TX3DField): boolean; override;
 
@@ -506,7 +506,7 @@
     procedure ParseValue(Lexer: TX3DLexer; Reader: TX3DReader); override;
 
     function EqualsDefaultValue: boolean; override;
-    function Equals(SecondValue: TX3DField): boolean; override;
+    function Equals(SecondValue: TX3DField; const Epsilon: Double): boolean; override;
     function FastEqualsValue(SecondValue: TX3DField): boolean; override;
 
     procedure Assign(Source: TPersistent); override;
@@ -572,7 +572,7 @@
     procedure ParseValue(Lexer: TX3DLexer; Reader: TX3DReader); override;
 
     function EqualsDefaultValue: boolean; override;
-    function Equals(SecondValue: TX3DField): boolean; override;
+    function Equals(SecondValue: TX3DField; const Epsilon: Double): boolean; override;
     function FastEqualsValue(SecondValue: TX3DField): boolean; override;
 
     procedure AssignLerp(const A: Double; Value1, Value2: TX3DField); override;
@@ -715,9 +715,9 @@ begin
   result := DefaultValueExists and (DefaultValue = Value);
 end;
 
-function TSFBool.Equals(SecondValue: TX3DField): boolean;
+function TSFBool.Equals(SecondValue: TX3DField; const Epsilon: Double): boolean;
 begin
-  Result := (inherited Equals(SecondValue)) and
+  Result := (inherited Equals(SecondValue, Epsilon)) and
     (SecondValue is TSFBool) and
     (TSFBool(SecondValue).Value = Value);
 end;
@@ -819,12 +819,12 @@ begin
   result := DefaultValueExists and (DefaultValue = Value)
 end;
 
-function TSFFloat.Equals(SecondValue: TX3DField): boolean;
+function TSFFloat.Equals(SecondValue: TX3DField; const Epsilon: Double): boolean;
 begin
-  Result := (inherited Equals(SecondValue)) and
+  Result := (inherited Equals(SecondValue, Epsilon)) and
     (SecondValue is TSFFloat) and
     (TSFFloat(SecondValue).MustBeNonnegative = MustBeNonnegative) and
-    SameValue(TSFFloat(SecondValue).Value, Value);
+    SameValue(TSFFloat(SecondValue).Value, Value, Epsilon);
 end;
 
 function TSFFloat.FastEqualsValue(SecondValue: TX3DField): boolean;
@@ -926,11 +926,11 @@ begin
   Result := DefaultValueExists and (DefaultValue = Value);
 end;
 
-function TSFDouble.Equals(SecondValue: TX3DField): boolean;
+function TSFDouble.Equals(SecondValue: TX3DField; const Epsilon: Double): boolean;
 begin
-  Result := (inherited Equals(SecondValue)) and
+  Result := (inherited Equals(SecondValue, Epsilon)) and
     (SecondValue is TSFDouble) and
-    SameValue(TSFDouble(SecondValue).Value, Value);
+    SameValue(TSFDouble(SecondValue).Value, Value, Epsilon);
 end;
 
 function TSFDouble.FastEqualsValue(SecondValue: TX3DField): boolean;
@@ -1173,9 +1173,9 @@ begin
   end;
 end;
 
-function TSFImage.Equals(SecondValue: TX3DField): boolean;
+function TSFImage.Equals(SecondValue: TX3DField; const Epsilon: Double): boolean;
 begin
-  Result := (inherited Equals(SecondValue)) and
+  Result := (inherited Equals(SecondValue, Epsilon)) and
     (SecondValue is TSFImage) and
     { TODO: compare values
     (TSFImage(SecondValue).Value = Value) }true;
@@ -1265,11 +1265,11 @@ begin
   result := DefaultValueExists and (DefaultValue = Value)
 end;
 
-function TSFLong.Equals(SecondValue: TX3DField): boolean;
+function TSFLong.Equals(SecondValue: TX3DField; const Epsilon: Double): boolean;
 begin
   { Note that this means that SFInt32 and SFLong will actually be considered
     equal. That's Ok, we want this. }
-  Result := (inherited Equals(SecondValue)) and
+  Result := (inherited Equals(SecondValue, Epsilon)) and
     (SecondValue is TSFLong) and
     (TSFLong(SecondValue).MustBeNonnegative = MustBeNonnegative) and
     (TSFLong(SecondValue).Value = Value);
@@ -1400,11 +1400,11 @@ begin
   Writer.DecIndent;
 end;
 
-function TSFGenericMatrix.Equals(SecondValue: TX3DField): boolean;
+function TSFGenericMatrix.Equals(SecondValue: TX3DField; const Epsilon: Double): boolean;
 begin
-  Result := (inherited Equals(SecondValue)) and
+  Result := (inherited Equals(SecondValue, Epsilon)) and
     (SecondValue is TSFGenericMatrix) and
-    TItem.Equals(TSFGenericMatrix(SecondValue).FValue, FValue);
+    TItem.Equals(TSFGenericMatrix(SecondValue).FValue, FValue, Epsilon);
 end;
 
 function TSFGenericMatrix.FastEqualsValue(SecondValue: TX3DField): boolean;
@@ -1605,12 +1605,12 @@ begin
   end;
 end;
 
-function TSFRotation.Equals(SecondValue: TX3DField): boolean;
+function TSFRotation.Equals(SecondValue: TX3DField; const Epsilon: Double): boolean;
 begin
-  Result := (inherited Equals(SecondValue)) and
+  Result := (inherited Equals(SecondValue, Epsilon)) and
     (SecondValue is TSFRotation) and
-    TVector3.Equals(TSFRotation(SecondValue).Axis, Axis) and
-    SameValue(TSFRotation(SecondValue).RotationRad, RotationRad);
+    TVector3.Equals(TSFRotation(SecondValue).Axis, Axis, Epsilon) and
+    SameValue(TSFRotation(SecondValue).RotationRad, RotationRad, Epsilon);
 end;
 
 function TSFRotation.FastEqualsValue(SecondValue: TX3DField): boolean;
@@ -1721,9 +1721,9 @@ begin
   Result := DefaultValueExists and (DefaultValue = Value);
 end;
 
-function TSFString.Equals(SecondValue: TX3DField): boolean;
+function TSFString.Equals(SecondValue: TX3DField; const Epsilon: Double): boolean;
 begin
-  Result := (inherited Equals(SecondValue)) and
+  Result := (inherited Equals(SecondValue, Epsilon)) and
     (SecondValue is TSFString) and
     (TSFString(SecondValue).Value = Value);
 end;
@@ -1931,11 +1931,11 @@ begin
   Result := DefaultValueExists and TItem.PerfectlyEquals(DefaultValue, Value);
 end;
 
-function TSFGenericVector.Equals(SecondValue: TX3DField): boolean;
+function TSFGenericVector.Equals(SecondValue: TX3DField; const Epsilon: Double): boolean;
 begin
-  Result := (inherited Equals(SecondValue)) and
+  Result := (inherited Equals(SecondValue, Epsilon)) and
     (SecondValue is TSFGenericVector) and
-    TItem.Equals(TSFGenericVector(SecondValue).Value, Value);
+    TItem.Equals(TSFGenericVector(SecondValue).Value, Value, Epsilon);
 end;
 
 function TSFGenericVector.FastEqualsValue(SecondValue: TX3DField): boolean;
@@ -2195,9 +2195,9 @@ begin
   end;
 end;
 
-function TSFBitMask.Equals(SecondValue: TX3DField): boolean;
+function TSFBitMask.Equals(SecondValue: TX3DField; const Epsilon: Double): boolean;
 begin
-  Result := (inherited Equals(SecondValue)) and
+  Result := (inherited Equals(SecondValue, Epsilon)) and
     (SecondValue is TSFBitMask) and
     (TSFBitMask(SecondValue).FFlagNames.Equals(FFlagNames)) and
     (TSFBitMask(SecondValue).FFlags = FFlags) and
@@ -2285,9 +2285,9 @@ begin
   result := DefaultValueExists and (DefaultValue = Value);
 end;
 
-function TSFEnum.Equals(SecondValue: TX3DField): boolean;
+function TSFEnum.Equals(SecondValue: TX3DField; const Epsilon: Double): boolean;
 begin
-  Result := (inherited Equals(SecondValue)) and
+  Result := (inherited Equals(SecondValue, Epsilon)) and
     (SecondValue is TSFEnum) and
     (TSFEnum(SecondValue).FEnumNames.Equals(FEnumNames)) and
     (TSFEnum(SecondValue).Value = Value);

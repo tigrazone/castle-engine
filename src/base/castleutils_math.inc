@@ -13,10 +13,20 @@
   ----------------------------------------------------------------------------
 }
 
-{ Very basic operations on numbers.
-  Also things related to setting 8087 Control Word. }
+{ Basic operations on numbers. }
 
 {$ifdef read_interface}
+
+const
+  { Epsilon used by default when compating Single (Single-precision float values).
+    Compatible with Math unit value, used by standard routines like Math.SameValue
+    and Math.IsZero. }
+  SingleEpsilon = 1E-4;
+
+  { Epsilon used by default when compating Double (Double-precision float values).
+    Compatible with Math unit value, used by standard routines like Math.SameValue
+    and Math.IsZero. }
+  DoubleEpsilon = 1E-12;
 
 { Swap variables values.
   @groupBegin }

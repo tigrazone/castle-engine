@@ -109,7 +109,7 @@
       of the items.
       Note that floating-point values are compared with some tolerance
       for errors by this method. }
-    function Equals(SecondValue: TX3DField): boolean; override;
+    function Equals(SecondValue: TX3DField; const Epsilon: Double): boolean; override;
     function EqualsDefaultValue: boolean; override;
 
     procedure ParseXMLAttributeLexer(Lexer: TX3DLexer; Reader: TX3DReader); override;
@@ -268,12 +268,12 @@ begin
   Result := true;
 end;
 
-function TX3DSimpleMultField.Equals(SecondValue: TX3DField): boolean;
+function TX3DSimpleMultField.Equals(SecondValue: TX3DField; const Epsilon: Double): boolean;
 begin
   Result :=
-    (inherited Equals(SecondValue)) and
+    (inherited Equals(SecondValue, Epsilon)) and
     (SecondValue is TX3DSimpleMultField) and
-    Items.Equals(TX3DSimpleMultField(SecondValue).Items);
+    Items.Equals(TX3DSimpleMultField(SecondValue).Items, Epsilon);
 end;
 
 function TX3DSimpleMultField.EqualsDefaultValue: boolean;

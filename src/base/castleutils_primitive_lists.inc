@@ -71,7 +71,8 @@ type
     { Does the SecondValue have equal length and content.
       The values are compared with an Epsilon tolerance, as usual for floating-point
       values. }
-    function Equals(SecondValue: TObject): boolean; override;
+    function Equals(SecondValue: TObject): boolean; override; overload;
+    function Equals(SecondValue: TSingleList; const Epsilon: Single): boolean; overload;
 
     { Does the SecondValue have equal length and content.
       The values are compared perfectly, without any tolerance for difference. }
@@ -91,7 +92,8 @@ type
     { Does the SecondValue have equal length and content.
       The values are compared with an Epsilon tolerance, as usual for floating-point
       values. }
-    function Equals(SecondValue: TObject): boolean; override;
+    function Equals(SecondValue: TObject): boolean; override; overload;
+    function Equals(SecondValue: TDoubleList; const Epsilon: Double): boolean; overload;
 
     { Does the SecondValue have equal length and content.
       The values are compared perfectly, without any tolerance for difference. }
@@ -117,7 +119,8 @@ type
     function ToLongInt: TLongIntList;
 
     { Does the SecondValue have equal length and content. }
-    function Equals(SecondValue: TObject): boolean; override;
+    function Equals(SecondValue: TObject): boolean; override; overload;
+    function Equals(SecondValue: TBooleanList; const Epsilon: Single): boolean; overload;
 
     { Does the SecondValue have equal length and content.
 
@@ -140,7 +143,8 @@ type
     procedure AddDuplicate(const Item: LongInt; const DuplicateCount: Cardinal);
 
     { Does the SecondValue have equal length and content. }
-    function Equals(SecondValue: TObject): boolean; override;
+    function Equals(SecondValue: TObject): boolean; override; overload;
+    function Equals(SecondValue: TLongIntList; const Epsilon: Single): boolean; overload;
 
     { Does the SecondValue have equal length and content.
 
@@ -290,21 +294,24 @@ begin
 end;
 
 function TSingleList.Equals(SecondValue: TObject): boolean;
+begin
+  Result :=
+    (SecondValue is TSingleList) and
+    Equals(TSingleList(SecondValue), SingleEpsilon);
+end;
+
+function TSingleList.Equals(SecondValue: TSingleList; const Epsilon: Single): boolean; overload;
 var
   I: Integer;
 begin
-  Result := SecondValue is TSingleList;
+  Result := Count = SecondValue.Count;
   if Result then
-  begin
-    Result := Count = TSingleList(SecondValue).Count;
-    if Result then
-      for I := 0 to Count - 1 do
-        if not SameValue(TSingleList(SecondValue).List^[I], List^[I]) then
-        begin
-          Result := false;
-          Exit;
-        end;
-  end;
+    for I := 0 to Count - 1 do
+      if not SameValue(SecondValue.List^[I], List^[I], Epsilon) then
+      begin
+        Result := false;
+        Exit;
+      end;
 end;
 
 function TSingleList.PerfectlyEquals(SecondValue: TObject): boolean;
@@ -364,21 +371,24 @@ begin
 end;
 
 function TDoubleList.Equals(SecondValue: TObject): boolean;
+begin
+  Result :=
+    (SecondValue is TDoubleList) and
+    Equals(TDoubleList(SecondValue), DoubleEpsilon);
+end;
+
+function TDoubleList.Equals(SecondValue: TDoubleList; const Epsilon: Double): boolean; overload;
 var
   I: Integer;
 begin
-  Result := SecondValue is TDoubleList;
+  Result := Count = SecondValue.Count;
   if Result then
-  begin
-    Result := Count = TDoubleList(SecondValue).Count;
-    if Result then
-      for I := 0 to Count - 1 do
-        if not SameValue(TDoubleList(SecondValue).List^[I], List^[I]) then
-        begin
-          Result := false;
-          Exit;
-        end;
-  end;
+    for I := 0 to Count - 1 do
+      if not SameValue(SecondValue.List^[I], List^[I], Epsilon) then
+      begin
+        Result := false;
+        Exit;
+      end;
 end;
 
 function TDoubleList.PerfectlyEquals(SecondValue: TObject): boolean;
@@ -440,21 +450,24 @@ begin
 end;
 
 function TBooleanList.Equals(SecondValue: TObject): boolean;
+begin
+  Result :=
+    (SecondValue is TBooleanList) and
+    Equals(TBooleanList(SecondValue), 0);
+end;
+
+function TBooleanList.Equals(SecondValue: TBooleanList; const Epsilon: Single): boolean; overload;
 var
   I: Integer;
 begin
-  Result := SecondValue is TBooleanList;
+  Result := Count = SecondValue.Count;
   if Result then
-  begin
-    Result := Count = TBooleanList(SecondValue).Count;
-    if Result then
-      for I := 0 to Count - 1 do
-        if TBooleanList(SecondValue).List^[I] <> List^[I] then
-        begin
-          Result := false;
-          Exit;
-        end;
-  end;
+    for I := 0 to Count - 1 do
+      if SecondValue.List^[I] <> List^[I] then
+      begin
+        Result := false;
+        Exit;
+      end;
 end;
 
 function TBooleanList.PerfectlyEquals(SecondValue: TObject): boolean;
@@ -508,21 +521,24 @@ begin
 end;
 
 function TLongIntList.Equals(SecondValue: TObject): boolean;
+begin
+  Result :=
+    (SecondValue is TLongIntList) and
+    Equals(TLongIntList(SecondValue), 0);
+end;
+
+function TLongIntList.Equals(SecondValue: TLongIntList; const Epsilon: Single): boolean; overload;
 var
   I: Integer;
 begin
-  Result := SecondValue is TLongIntList;
+  Result := Count = SecondValue.Count;
   if Result then
-  begin
-    Result := Count = TLongIntList(SecondValue).Count;
-    if Result then
-      for I := 0 to Count - 1 do
-        if TLongIntList(SecondValue).List^[I] <> List^[I] then
-        begin
-          Result := false;
-          Exit;
-        end;
-  end;
+    for I := 0 to Count - 1 do
+      if SecondValue.List^[I] <> List^[I] then
+      begin
+        Result := false;
+        Exit;
+      end;
 end;
 
 function TLongIntList.PerfectlyEquals(SecondValue: TObject): boolean;
