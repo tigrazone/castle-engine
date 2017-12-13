@@ -14,8 +14,17 @@
 }
 
 {$ifdef read_interface}
+  TShaderPartNode = class;
+  TShaderProgramNode = class;
+
+  { Shader language used for @link(TAbstractShaderNode.Language) and @link(TEffectNode.Language). }
+  TShaderLanguage = (slDefault, slCG, slGLSL, slHLSL);
+
   { Base type for all node types that specify a programmable shader. }
   TAbstractShaderNode = class(TAbstractAppearanceChildNode)
+  strict private
+    function GetLanguage: TShaderLanguage;
+    procedure SetLanguage(const Value: TShaderLanguage);
   public
     procedure CreateNode; override;
 
@@ -31,8 +40,9 @@
     strict private FEventIsValid: TSFBoolEvent;
     public property EventIsValid: TSFBoolEvent read FEventIsValid;
 
-    strict private FFdLanguage: TSFString;
-    public property FdLanguage: TSFString read FFdLanguage;
+    strict private FFdLanguage: TSFStringEnum;
+    public property FdLanguage: TSFStringEnum read FFdLanguage;
+    property Language: TShaderLanguage read GetLanguage write SetLanguage;
 
     {$I auto_generated_node_helpers/x3dnodes_x3dshadernode.inc}
   end;
@@ -151,6 +161,8 @@
       Event: TX3DEvent; Value: TX3DField; const Time: TX3DTime);
     function GetShaderType: TShaderType;
     procedure SetShaderType(const Value: TShaderType);
+    function GetContents: string;
+    procedure SetContents(const Value: string);
   public
     procedure CreateNode; override;
     class function ClassX3DType: string; override;
@@ -165,11 +177,17 @@
     { Shader type. }
     property ShaderType: TShaderType read GetShaderType write SetShaderType;
 
-    { Load shader code from node's URLs.
-      In X3D XML encoding, also loads node's XML CDATA as a last resort.
-      Will return '' if no valid URLs are present,
-      loading errors are reported to WritelnWarning. }
-    function Contents: string;
+    { The shader code.
+
+      Getting this automatically loads the shader code pointed by the URL field
+      of this node. The shader code may be specified in an external file,
+      or inline using "data URI", see https://castle-engine.sourceforge.io/manual_network.php .
+      The shader code may also be specified using the XML "CDATA" in X3D XML encoding.
+      Returns '' of no valid URLs are present
+      (loading errors are reported to WritelnWarning).
+
+      Setting this overrides the URL field, to specify only the given shader code. }
+    property Contents: string read GetContents write SetContents;
 
     {$I auto_generated_node_helpers/x3dnodes_shaderpart.inc}
   end;
@@ -194,6 +212,13 @@
 {$endif read_interface}
 
 {$ifdef read_implementation}
+const
+  ShaderLanguageNames: array [TShaderLanguage] of string =
+  ('', 'CG', 'GLSL', 'HLSL');
+
+  ShaderTypeNameX3D: array [TShaderType] of string =
+  ( 'VERTEX', 'GEOMETRY', 'FRAGMENT' );
+
 procedure TAbstractShaderNode.CreateNode;
 begin
   inherited;
@@ -207,21 +232,28 @@ begin
   FEventIsValid := TSFBoolEvent.Create(Self, 'isValid', false);
   AddEvent(FEventIsValid);
 
-  FFdLanguage := TSFString.Create(Self, 'language', '');
-   FdLanguage.Exposed := false;
+  FFdLanguage := TSFStringEnum.Create(Self, false, 'language', ShaderLanguageNames, Ord(slDefault));
    FdLanguage.ChangesAlways := [chEverything];
   AddField(FFdLanguage);
-  { X3D specification comment: ["CG"|"GLSL"|"HLSL"|...] }
 
   DefaultContainerField := 'shaders';
+end;
+
+function TAbstractShaderNode.GetLanguage: TShaderLanguage;
+begin
+  Result := TShaderLanguage(FdLanguage.EnumValue);
+end;
+
+procedure TAbstractShaderNode.SetLanguage(const Value: TShaderLanguage);
+begin
+  FdLanguage.SendEnumValue(Ord(Value));
 end;
 
 procedure TAbstractVertexAttributeNode.CreateNode;
 begin
   inherited;
 
-  FFdName := TSFString.Create(Self, 'name', '');
-  FFdName.Exposed := false;
+  FFdName := TSFString.Create(Self, false, 'name', '');
   AddField(FFdName);
 
   DefaultContainerField := 'attrib';
@@ -231,7 +263,7 @@ procedure TComposedShaderNode.CreateNode;
 begin
   inherited;
 
-  FFdParts := TMFNode.Create(Self, 'parts', [TShaderPartNode]);
+  FFdParts := TMFNode.Create(Self, true, 'parts', [TShaderPartNode]);
    FdParts.ChangesAlways := [chEverything];
   AddField(FFdParts);
 
@@ -265,12 +297,11 @@ procedure TFloatVertexAttributeNode.CreateNode;
 begin
   inherited;
 
-  FFdValue := TMFFloat.Create(Self, 'value', []);
+  FFdValue := TMFFloat.Create(Self, true, 'value', []);
   AddField(FFdValue);
   { X3D specification comment: (-Inf,Inf) }
 
-  FFdNumComponents := TSFInt32.Create(Self, 'numComponents', 4);
-  FFdNumComponents.Exposed := false;
+  FFdNumComponents := TSFInt32.Create(Self, false, 'numComponents', 4);
   AddField(FFdNumComponents);
   { X3D specification comment: [1..4] }
 end;
@@ -290,7 +321,7 @@ procedure TMatrix3VertexAttributeNode.CreateNode;
 begin
   inherited;
 
-  FFdValue := TMFMatrix3f.Create(Self, 'value', []);
+  FFdValue := TMFMatrix3f.Create(Self, true, 'value', []);
   AddField(FFdValue);
   { X3D specification comment: (-Inf,Inf) }
 end;
@@ -310,7 +341,7 @@ procedure TMatrix4VertexAttributeNode.CreateNode;
 begin
   inherited;
 
-  FFdValue := TMFMatrix4f.Create(Self, 'value', []);
+  FFdValue := TMFMatrix4f.Create(Self, true, 'value', []);
   AddField(FFdValue);
   { X3D specification comment: (-Inf,Inf) }
 end;
@@ -330,7 +361,7 @@ procedure TPackagedShaderNode.CreateNode;
 begin
   inherited;
 
-  FFdUrl := TMFString.Create(Self, 'url', []);
+  FFdUrl := TMFString.Create(Self, true, 'url', []);
   AddField(FFdUrl);
   { X3D specification comment: [URI] }
 
@@ -353,7 +384,7 @@ procedure TProgramShaderNode.CreateNode;
 begin
   inherited;
 
-  FFdPrograms := TMFNode.Create(Self, 'programs', [TShaderProgramNode]);
+  FFdPrograms := TMFNode.Create(Self, true, 'programs', [TShaderProgramNode]);
   AddField(FFdPrograms);
 end;
 
@@ -372,14 +403,13 @@ procedure TShaderPartNode.CreateNode;
 begin
   inherited;
 
-  FFdUrl := TMFString.Create(Self, 'url', []);
+  FFdUrl := TMFString.Create(Self, true, 'url', []);
    FdUrl.ChangesAlways := [chEverything]; { TODO - something more optimized }
-   FdUrl.OnReceive.Add({$ifdef CASTLE_OBJFPC}@{$endif} EventUrlReceive);
+   FdUrl.AddNotification({$ifdef CASTLE_OBJFPC}@{$endif} EventUrlReceive);
   AddField(FFdUrl);
   { X3D specification comment: [URI] }
 
-  FFdType := TSFStringEnum.Create(Self, 'type', ShaderTypeNameX3D, Ord(stVertex));
-   FdType.Exposed := false;
+  FFdType := TSFStringEnum.Create(Self, false, 'type', ShaderTypeNameX3D, Ord(stVertex));
    FdType.ChangesAlways := [chEverything];
   AddField(FFdType);
   { X3D specification comment: ["VERTEX"|"FRAGMENT"] }
@@ -435,7 +465,7 @@ begin
   end;
 end;
 
-function TShaderPartNode.Contents: string;
+function TShaderPartNode.GetContents: string;
 begin
   if not ContentsCached then
   begin
@@ -443,6 +473,16 @@ begin
     ContentsCached := true;
   end;
   Result := ContentsCache;
+end;
+
+procedure TShaderPartNode.SetContents(const Value: string);
+begin
+  SetUrl(['data:text/plain,' + Value]);
+
+  //Assert(Value = GetContents);
+  // an optimized way to initialize ContentsCache
+  ContentsCache := Value;
+  ContentsCached := true;
 end;
 
 procedure TShaderPartNode.EventUrlReceive(
@@ -471,12 +511,11 @@ procedure TShaderProgramNode.CreateNode;
 begin
   inherited;
 
-  FFdUrl := TMFString.Create(Self, 'url', []);
+  FFdUrl := TMFString.Create(Self, true, 'url', []);
   AddField(FFdUrl);
   { X3D specification comment: [URI] }
 
-  FFdType := TSFStringEnum.Create(Self, 'type', ShaderTypeNameX3D, Ord(stVertex));
-  FFdType.Exposed := false;
+  FFdType := TSFStringEnum.Create(Self, false, 'type', ShaderTypeNameX3D, Ord(stVertex));
   AddField(FFdType);
   { X3D specification comment: ["VERTEX"|"FRAGMENT"] }
 

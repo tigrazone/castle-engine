@@ -18,7 +18,7 @@
 
 { If defined, then the 3D world will contain an additional animation
   of a dinosaur. It's most suitable when as the main scene you load
-  data/bridge_final.x3dv, then you get a setup similar to scene_manager_demos.
+  data/bridge_final.x3dv .
   This shows that animation from 2nd file works fully with mirrors
   by GeneratedCubeMapTexture in 1st file, also in custom viewports. }
 { $define ADD_ANIMATION}
@@ -26,14 +26,13 @@
 {$I castleconf.inc}
 
 uses SysUtils,
-  {$ifdef CASTLE_OBJFPC} CastleGL, {$else} GL, GLExt, {$endif}
   CastleWindow, X3DNodes, CastleSceneCore, CastleScene,
   CastleUIControls, CastleCameras, CastleQuaternions, CastleVectors,
   CastleControls, CastleLog, CastleScreenEffects, CastleSceneManager,
   CastleUtils, CastleGLUtils, X3DLoad, CastleGLShaders, CastleParameters,
   CastleStringUtils, CastleKeysMouse, CastleColors, CastleControlsImages,
   CastleApplicationProperties
-  {$ifdef ADD_ANIMATION} , CastleFilesUtils, Castle3D {$endif};
+  {$ifdef ADD_ANIMATION} , CastleFilesUtils, CastleTransform {$endif};
 
 { TMyViewport ---------------------------------------------------------------- }
 
@@ -53,17 +52,19 @@ type
 
 procedure TWireViewport.Render;
 begin
-  { TODO: There is no way to make this trick work on OpenGLES.
-    Wireframe rendering must be done then by really rendering different
-    primitives, not by switching some PolygonMode. }
-  {$ifndef OpenGLES}
-  glPushAttrib(GL_POLYGON_BIT or GL_LINE_BIT);
-    glPolygonMode(GL_FRONT_AND_BACK, GL_LINE); { saved by GL_POLYGON_BIT }
-  {$endif}
-    inherited;
-  {$ifndef OpenGLES}
-  glPopAttrib;
-  {$endif}
+  { To make wireframe rendering, but only in this viewport
+    (not in other viewports), we temporarily switch WireframeEffect
+    of the MainScene.
+
+    In a desktop OpenGL, an alternative way to do this is to switch
+      glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+    and then go back by
+      glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+    But this is not possible on OpenGLES. }
+
+  GetMainScene.Attributes.WireframeEffect := weWireframeOnly;
+  inherited;
+  GetMainScene.Attributes.WireframeEffect := weNormal;
 end;
 
 { TScreenEffectDemoViewport -------------------------------------------------- }
@@ -95,7 +96,7 @@ end;
 procedure TScreenEffectDemoViewport.GLContextOpen;
 begin
   inherited;
-  if TGLSLProgram.ClassSupport <> gsNone then
+  if GLFeatures.Shaders <> gsNone then
   begin
     GLSLProgram := TGLSLScreenEffect.Create;
     GLSLProgram.ScreenEffectShader :=
@@ -192,19 +193,13 @@ begin
   begin
     { set different camera views for all viewports, to make it interesting }
     Viewports[I].Camera.Free;
-    Viewports[I].Camera := Window.SceneManager.CreateDefaultCamera;
-    if (I < 3) and (Viewports[I].Camera is TExamineCamera) then
-      TExamineCamera(Viewports[I].Camera).Rotations :=
-        QuatFromAxisAngle(TVector3.One[I], Pi/2);
+    if (I < 3) and
+       (Viewports[I].RequiredCamera is TExamineCamera) then
+      Viewports[I].ExamineCamera.Rotations := QuatFromAxisAngle(TVector3.One[I], Pi/2);
   end;
 
-  { scene manager needs assigned camera to make a headlight.
-
-    Right now, one camera cannot be simultaneously on scene manager
-    and viewports. So assign here new camera.
-    See TODO at TCastleAbstractViewport.Camera. }
-  Window.SceneManager.Camera.Free;
-  Window.SceneManager.Camera := Window.SceneManager.CreateDefaultCamera;
+  { scene manager needs assigned camera to make a headlight. }
+  Window.SceneManager.RequiredCamera;
 end;
 
 var
@@ -243,7 +238,7 @@ var
   Background: TCastleSimpleBackground;
   {$ifdef ADD_ANIMATION}
   Animation: TCastleScene;
-  Transform: T3DTransform;
+  Transform: TCastleTransform;
   {$endif ADD_ANIMATION}
 begin
   if Parameters.High = 1 then
@@ -264,7 +259,7 @@ begin
 
   {$ifdef ADD_ANIMATION}
   { initialize Transform }
-  Transform := T3DTransform.Create(Window.SceneManager);
+  Transform := TCastleTransform.Create(Window.SceneManager);
 //  Transform.Translation := Vector3(5, 3, 60);
   Window.SceneManager.Items.Add(Transform);
 

@@ -68,14 +68,14 @@ procedure glColorv(const v: TVector3f); overload; //deprecated 'instead of this,
 procedure glColorv(const v: TVector4f); overload; //deprecated 'instead of this, use drawing routines that take Color from parameters or properties, like TCastleFont.Print(X,Y,Color,...) or TGLImage.Color';
 
 { }
-procedure glTranslatev(const V: TVector3f); overload; deprecated 'use other methods to transform things, e.g. TUIControl position / anchors, or T3DTransform for TCastleScene, or TTransformNode in X3D';
-procedure glTranslatev(const V: TVector3_Single); overload; deprecated 'use other methods to transform things, e.g. TUIControl position / anchors, or T3DTransform for TCastleScene, or TTransformNode in X3D';
+procedure glTranslatev(const V: TVector3f); overload; deprecated 'use other methods to transform things, e.g. TUIControl position / anchors, or TCastleTransform for TCastleScene, or TTransformNode in X3D';
+procedure glTranslatev(const V: TVector3_Single); overload; deprecated 'use other methods to transform things, e.g. TUIControl position / anchors, or TCastleTransform for TCastleScene, or TTransformNode in X3D';
 
-procedure glScalev(const V: Single); overload; deprecated 'use other methods to transform things, e.g. TUIControl position / anchors, or T3DTransform for TCastleScene, or TTransformNode in X3D';
-procedure glScalev(const V: TVector3f); overload; deprecated 'use other methods to transform things, e.g. TUIControl position / anchors, or T3DTransform for TCastleScene, or TTransformNode in X3D';
-procedure glScalev(const V: TVector3_Single); overload; deprecated 'use other methods to transform things, e.g. TUIControl position / anchors, or T3DTransform for TCastleScene, or TTransformNode in X3D';
+procedure glScalev(const V: Single); overload; deprecated 'use other methods to transform things, e.g. TUIControl position / anchors, or TCastleTransform for TCastleScene, or TTransformNode in X3D';
+procedure glScalev(const V: TVector3f); overload; deprecated 'use other methods to transform things, e.g. TUIControl position / anchors, or TCastleTransform for TCastleScene, or TTransformNode in X3D';
+procedure glScalev(const V: TVector3_Single); overload; deprecated 'use other methods to transform things, e.g. TUIControl position / anchors, or TCastleTransform for TCastleScene, or TTransformNode in X3D';
 
-procedure glRotatev(const Angle: TGLfloat;  const V: TVector3f); overload; deprecated 'use other methods to transform things, e.g. TUIControl position / anchors, or T3DTransform for TCastleScene, or TTransformNode in X3D';
+procedure glRotatev(const Angle: TGLfloat;  const V: TVector3f); overload; deprecated 'use other methods to transform things, e.g. TUIControl position / anchors, or TCastleTransform for TCastleScene, or TTransformNode in X3D';
 
 procedure glClipPlane(plane: GLenum; const V: TVector4Double); overload;
 
@@ -109,9 +109,9 @@ procedure glFogv(pname: TGLEnum; const params: TVector4f); overload;
 
 // Do not mark as "deprecated" for now. These have valid (although internal) usage.
 { }
-procedure glMultMatrix(const m: TMatrix4f); overload; //deprecated 'use other methods to transform things, e.g. TUIControl position / anchors, or T3DTransform for TCastleScene, or TTransformNode in X3D';
+procedure glMultMatrix(const m: TMatrix4f); overload; //deprecated 'use other methods to transform things, e.g. TUIControl position / anchors, or TCastleTransform for TCastleScene, or TTransformNode in X3D';
 { }
-procedure glLoadMatrix(const m: TMatrix4f); overload; //deprecated 'use other methods to transform things, e.g. TUIControl position / anchors, or T3DTransform for TCastleScene, or TTransformNode in X3D';
+procedure glLoadMatrix(const m: TMatrix4f); overload; //deprecated 'use other methods to transform things, e.g. TUIControl position / anchors, or TCastleTransform for TCastleScene, or TTransformNode in X3D';
 
 { }
 procedure glTexEnvv(target, pname: TGLEnum; const params: TVector4f); overload;
@@ -133,8 +133,8 @@ var
 
 { ---------------------------------------------------------------------------- }
 
-{ }
-procedure GLSetEnabled(value: TGLenum; isEnabled: boolean);
+{ Enable or disable given OpenGL flag. }
+procedure GLSetEnabled(Value: TGLenum; IsEnabled: boolean);
 
 {$ifndef OpenGLES}
 
@@ -230,7 +230,7 @@ procedure glFreeBuffer(var Buffer: TGLuint);
     glDepthMask(Writeable);
     glColorMask(Writeable, Writeable, Writeable, Writeable);
   #) }
-procedure glSetDepthAndColorWriteable(Writeable: TGLboolean);
+procedure glSetDepthAndColorWriteable(const Writeable: boolean);
 
 { Global position for drawing 2D stuff.
   @deprecated Do this use this.
@@ -393,9 +393,9 @@ end;
 
 { Various helpers ------------------------------------------------------------ }
 
-procedure GLSetEnabled(value: TGLenum; isEnabled: boolean);
+procedure GLSetEnabled(Value: TGLenum; IsEnabled: boolean);
 begin
-  if isEnabled then glEnable(value) else glDisable(value);
+  if IsEnabled then glEnable(Value) else glDisable(Value);
 end;
 
 {$ifndef OpenGLES}
@@ -412,8 +412,6 @@ end;
 procedure GLDrawArrow(HeadThickness, HeadLength: TGLfloat);
 begin
   HeadLength := 2*HeadLength; { mapuj HeadLength na zakres 0..2 }
-
-  { TODO: tutaj powinienes przelaczac glEdgeFlag }
 
   glBegin(GL_TRIANGLES);
     glVertex2f(0, 2);
@@ -574,43 +572,52 @@ begin
   end;
 end;
 
-procedure glSetDepthAndColorWriteable(Writeable: TGLboolean);
+procedure glSetDepthAndColorWriteable(const Writeable: boolean);
+var
+  B: TGLboolean;
 begin
-  glDepthMask(Writeable);
-  glColorMask(Writeable, Writeable, Writeable, Writeable);
+  if Writeable then
+    B := GL_TRUE
+  else
+    B := GL_FALSE;
+  glDepthMask(B);
+  glColorMask(B, B, B, B);
 end;
 
 function GLEnableTexture(const Target: TEnableTextureTarget): boolean;
 begin
   Result := true;
 
-  {$ifndef OpenGLES}
+  if GLFeatures.EnableFixedFunction then
+  begin
+    {$ifndef OpenGLES}
 
-  case Target of
-    etNone: begin
-        glDisable(GL_TEXTURE_2D);
-        if GLFeatures.TextureCubeMap <> gsNone then glDisable(GL_TEXTURE_CUBE_MAP);
-        if GLFeatures.Texture3D <> gsNone then glDisable(GL_TEXTURE_3D);
-      end;
-    et2D: begin
-        glEnable(GL_TEXTURE_2D);
-        if GLFeatures.TextureCubeMap <> gsNone then glDisable(GL_TEXTURE_CUBE_MAP);
-        if GLFeatures.Texture3D <> gsNone then glDisable(GL_TEXTURE_3D);
-      end;
-    etCubeMap: begin
-        glDisable(GL_TEXTURE_2D);
-        if GLFeatures.TextureCubeMap <> gsNone then glEnable(GL_TEXTURE_CUBE_MAP) else Result := false;
-        if GLFeatures.Texture3D <> gsNone then glDisable(GL_TEXTURE_3D);
-      end;
-    et3D: begin
-        glDisable(GL_TEXTURE_2D);
-        if GLFeatures.TextureCubeMap <> gsNone then glDisable(GL_TEXTURE_CUBE_MAP);
-        if GLFeatures.Texture3D <> gsNone then glEnable(GL_TEXTURE_3D) else Result := false;
-      end;
-    else raise EInternalError.Create('GLEnableTexture:Target?');
+    case Target of
+      etNone: begin
+          glDisable(GL_TEXTURE_2D);
+          if GLFeatures.TextureCubeMap <> gsNone then glDisable(GL_TEXTURE_CUBE_MAP);
+          if GLFeatures.Texture3D <> gsNone then glDisable(GL_TEXTURE_3D);
+        end;
+      et2D: begin
+          glEnable(GL_TEXTURE_2D);
+          if GLFeatures.TextureCubeMap <> gsNone then glDisable(GL_TEXTURE_CUBE_MAP);
+          if GLFeatures.Texture3D <> gsNone then glDisable(GL_TEXTURE_3D);
+        end;
+      etCubeMap: begin
+          glDisable(GL_TEXTURE_2D);
+          if GLFeatures.TextureCubeMap <> gsNone then glEnable(GL_TEXTURE_CUBE_MAP) else Result := false;
+          if GLFeatures.Texture3D <> gsNone then glDisable(GL_TEXTURE_3D);
+        end;
+      et3D: begin
+          glDisable(GL_TEXTURE_2D);
+          if GLFeatures.TextureCubeMap <> gsNone then glDisable(GL_TEXTURE_CUBE_MAP);
+          if GLFeatures.Texture3D <> gsNone then glEnable(GL_TEXTURE_3D) else Result := false;
+        end;
+      else raise EInternalError.Create('GLEnableTexture:Target?');
+    end;
+
+    {$endif}
   end;
-
-  {$endif}
 end;
 
 {$endif read_implementation}

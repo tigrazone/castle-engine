@@ -77,7 +77,6 @@ const
         '  Buggy GL_LIGHT_MODEL_TWO_SIDE: %s' +nl+
         '  Buggy VBO: %s' +nl+
         '  Buggy shader shadow map: %s' +nl+
-        '  Buggy GLSL "const in gl_XxxParameters" declaration: %s' +nl+
         '  Buggy FBO rendering to multi-sampling texture: %s' +nl+
         '  Buggy FBO rendering to cube map texture: %s' +nl+
         '  Buggy swap buffers with non-standard glViewport: %s' +nl+
@@ -95,7 +94,6 @@ const
           BoolToStr(Version.BuggyLightModelTwoSide, true),
           BoolToStr(Version.BuggyVBO, true),
           BoolToStr(Version.BuggyShaderShadowMap, true),
-          BoolToStr(Version.BuggyGLSLConstStruct, true),
           BoolToStr(Version.BuggyFBOMultiSampling, true),
           BoolToStr(Version.BuggyFBOCubeMap, true),
           BoolToStr(Version.BuggySwapNonStandardViewport, true),
@@ -154,6 +152,13 @@ const
     Result := '[' + Result + ']';
   end;
 
+  function IntToStrUnknown(const I: Integer): string;
+  begin
+    Result := IntToStr(I);
+    if I = 0 then
+      Result := Result + ' (unknown)';
+  end;
+
 begin
   Result:=
     'OpenGL information (detected by ' + ApplicationName +'):' +nl+
@@ -187,7 +192,8 @@ begin
 
     '---------' +nl+
     'Features:' +nl+
-    '  GLSL shaders support: ' + GLSupportNames[TGLSLProgram.ClassSupport] +nl+
+    '  Shaders (GLSL) support: ' + GLSupportNames[GLFeatures.Shaders] +nl+
+    '  => Enable deprecated (fixed-function) support: ' + BoolToStr(GLFeatures.EnableFixedFunction, true) +nl+
     '  Multi-texturing: ' + BoolToStr(GLFeatures.UseMultiTexturing, true) +nl+
     '  Framebuffer Object: ' + GLSupportNamesFBO[GLFeatures.Framebuffer] +nl+
     '  Multi-sampling for FBO buffers and textures: ' + BoolToStr(GLFeatures.FBOMultiSampling, true) +nl+
@@ -220,7 +226,7 @@ begin
 
     '---------------------------' +nl+
     'Current buffers bit depths:' +nl+
-    '  Color (red / greeen / blue / alpha): '
+    '  Color (red / green / blue / alpha): '
       +GetInteger(GL_RED_BITS) +' / '
       +GetInteger(GL_GREEN_BITS) +' / '
       +GetInteger(GL_BLUE_BITS) +' / '
@@ -231,7 +237,7 @@ begin
     {$endif}
     '  Stencil: ' +GetInteger(GL_STENCIL_BITS) +nl+
     {$ifndef OpenGLES}
-    '  Accumulation (red / greeen / blue / alpha): '
+    '  Accumulation (red / green / blue / alpha): '
       +GetInteger(GL_ACCUM_RED_BITS) +' / '
       +GetInteger(GL_ACCUM_GREEN_BITS) +' / '
       +GetInteger(GL_ACCUM_BLUE_BITS) +' / '
@@ -274,9 +280,17 @@ begin
     '  Max renderbuffer size: ' + GetMaxRenderbufferSize
     {$ifdef OpenGLES} +NL+
     '  Max line width: ' + GetInteger(GL_ALIASED_LINE_WIDTH_RANGE)
-    {$endif};
+    {$endif} + NL +
+    NL +
+    '-------' + NL +
+    'Memory (in Kb):' + NL +
+    '  Total: ' + IntToStrUnknown(GLFeatures.Memory.Total) + NL +
+    '  Current: ' + IntToStrUnknown(GLFeatures.Memory.Current) + NL +
+    '  Current for VBO: ' + IntToStrUnknown(GLFeatures.Memory.CurrentVbo) + NL +
+    '  Current for Textures: ' + IntToStrUnknown(GLFeatures.Memory.CurrentTexture) + NL +
+    '  Current for Renderbuffers: ' + IntToStrUnknown(GLFeatures.Memory.CurrentRenderbuffer);
 
-   CheckGLErrors;
+  CheckGLErrors;
 end;
 
 {$endif read_implementation}

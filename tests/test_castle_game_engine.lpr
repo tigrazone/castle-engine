@@ -49,13 +49,15 @@ uses
   TestCastleImagesDraw,
   TestCastleBoxes,
   TestCastleFrustum,
-  TestCastle3D,
+  TestCastleTransform,
   TestCastleParameters,
   TestCastleCameras,
+  TestX3DFields,
   TestX3DNodes,
   TestX3DNodesOptimizedProxy,
   TestCastleScene,
   TestCastleSceneCore,
+  TestCastleSceneManager,
   TestCastleVideos,
   TestCastleSpaceFillingCurves,
   TestCastleStringUtils,
@@ -72,7 +74,8 @@ uses
   TestCastleCurves,
   TestCastleTimeUtils,
   TestCastleControls,
-  TestCastleRandom
+  TestCastleRandom,
+  TestCastleSoundEngine
 
   {$ifdef TEXT_RUNNER} {$ifndef NO_WINDOW_SYSTEM},
   TestCastleWindow,
@@ -92,15 +95,15 @@ var
 {$endif}
 
 {var
-  T: TTestCastle3D;}
+  T: TTestCastleTransform;}
 begin
   ApplicationProperties.OnWarning.Add(@ApplicationProperties.WriteWarningOnConsole);
 
 { Sometimes it's comfortable to just run the test directly, to get
   full backtrace from FPC.
 
-  T := TTestCastle3D.Create;
-  T.TestListNotification;
+  T := TTestCastleTransform.Create;
+  T.TestPhysicsWorldOwnerEmptyBox;
   T.Free;
   Exit;}
 

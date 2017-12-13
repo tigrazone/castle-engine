@@ -43,8 +43,7 @@ type
         to move in the world). Because you typically want to
         code from scratch all your own movement for 2D.
 
-        More precisely, the TUniversalCamera.NavigationType is ntNone
-        by default.
+        More precisely, the NavigationType is ntNone by default.
       )
 
       @item(Sets @bold(2D projection). By default
@@ -102,6 +101,15 @@ type
       read FProjectionWidth write FProjectionWidth default 0;
     property CurrentProjectionWidth: Single read FCurrentProjectionWidth;
     property CurrentProjectionHeight: Single read FCurrentProjectionHeight;
+
+    { Determines the minimum and maximum depth visible, relative to the camera Z.
+
+      Higher values allow to see more.
+      The objects are visible in Z range
+      @code([Camera.Position.Z - ProjectionSpan ..
+      Camera.Position.Z + ProjectionSpan]).
+
+      Lower values improve depth buffer precision. }
     property ProjectionSpan: Single
       read FProjectionSpan write FProjectionSpan default DefaultProjectionSpan;
 
@@ -133,7 +141,7 @@ type
       read FProjectionOriginCenter write FProjectionOriginCenter default false;
 
     constructor Create(AOwner: TComponent); override;
-    function CreateDefaultCamera(AOwner: TComponent): TCamera; override;
+    procedure AssignDefaultCamera; override;
   published
     property Transparent default true;
   end;
@@ -166,21 +174,26 @@ begin
   FProjectionSpan := DefaultProjectionSpan;
   FProjectionHeight := 0;
   FProjectionWidth := 0;
+
+  { Make camera already existing, so WalkCamera returns it,
+    instead of using AssignDefaultCamera and then switching to ntWalk. }
+  AssignDefaultCamera;
 end;
 
-function T2DSceneManager.CreateDefaultCamera(AOwner: TComponent): TCamera;
-var
-  UCamera: TUniversalCamera;
+procedure T2DSceneManager.AssignDefaultCamera;
 begin
-  UCamera := TUniversalCamera.Create(AOwner);
-  UCamera.NavigationType := ntNone;
-  UCamera.SetInitialView(
+  { Set Camera explicitly, otherwise SetNavigationType below could call
+    ExamineCamera / WalkCamera that call AssignDefaultCamera when Camera = nil,
+    and we would have infinite AssignDefaultCamera calls loop. }
+  Camera := InternalWalkCamera;
+
+  NavigationType := ntNone;
+  Camera.SetInitialView(
     { pos } Vector3(0, 0, DefaultCameraZ),
     { dir } Vector3(0, 0, -1),
     { up } Vector3(0, 1, 0), false);
-  UCamera.GoToInitial;
-  UCamera.Radius := 0.01; { will not be used for anything, but set to something sensible just in case }
-  Result := UCamera;
+  Camera.GoToInitial;
+  Camera.Radius := 0.01; { will not be used for anything, but set to something sensible just in case }
 end;
 
 function T2DSceneManager.CalculateProjection: TProjection;

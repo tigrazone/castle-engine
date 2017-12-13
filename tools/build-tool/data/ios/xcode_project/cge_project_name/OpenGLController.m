@@ -99,10 +99,8 @@
     // see http://stackoverflow.com/questions/1567134/how-can-i-get-a-writable-path-on-the-iphone/1567147#1567147
     NSArray *paths = NSSearchPathForDirectoriesInDomains(NSLibraryDirectory, NSUserDomainMask, YES);
     NSString *libraryDirectory = [paths objectAtIndex:0];
-    // see http://stackoverflow.com/questions/2996657/converting-an-nsstring-to-char
-    char *libraryDirectoryAsChar = strdup([libraryDirectory cStringUsingEncoding:[NSString defaultCStringEncoding]]);
 
-    CGEApp_Open(m_oldViewWidth * m_fScale, m_oldViewHeight * m_fScale, libraryDirectoryAsChar);
+    CGEApp_Open(m_oldViewWidth * m_fScale, m_oldViewHeight * m_fScale, [libraryDirectory fileSystemRepresentation]);
     CGEApp_SetDpi(115 * m_fScale);
 
     [self update];
@@ -195,7 +193,7 @@
 }
 
 //-----------------------------------------------------------------
-- (void)touchesEnded:(NSSet *)touches withEvent:(UIEvent *)event
+- (void)TouchesEndedOrCancelled:(NSSet *)touches
 {
     for (UITouch *touch in touches)
     {
@@ -206,27 +204,21 @@
 
         CGPoint pt = [touch locationInView:self.view];
         [self RecalcTouchPosForCGE:&pt];
-        CGEApp_MouseUp(pt.x, pt.y, true, (int)nFingerIdx);
+        CGEApp_MouseUp(pt.x, pt.y, true, (int)nFingerIdx, false);
     }
+}
 
+//-----------------------------------------------------------------
+- (void)touchesEnded:(NSSet *)touches withEvent:(UIEvent *)event
+{
+    [self TouchesEndedOrCancelled:touches];
     [super touchesEnded:touches withEvent:event];
 }
 
 //-----------------------------------------------------------------
 - (void)touchesCancelled:(NSSet *)touches withEvent:(UIEvent *)event
 {
-    for (UITouch *touch in touches)
-    {
-        NSInteger nFingerIdx = [self IndexOfTouch:touch];
-        if (nFingerIdx == -1) continue;
-
-        m_arrTouches[nFingerIdx] = nil;
-
-        CGPoint pt = [touch locationInView:self.view];
-        [self RecalcTouchPosForCGE:&pt];
-        CGEApp_MouseUp(pt.x, pt.y, true, (int)nFingerIdx);
-    }
-
+    [self TouchesEndedOrCancelled:touches];
     [super touchesCancelled:touches withEvent:event];
 }
 

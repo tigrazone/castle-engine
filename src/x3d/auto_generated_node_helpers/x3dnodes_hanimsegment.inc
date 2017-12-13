@@ -38,7 +38,10 @@
   public
     property CenterOfMass: TVector3 read GetCenterOfMass write SetCenterOfMass;
     property Coord: TAbstractCoordinateNode read GetCoord write SetCoord;
+    procedure SetDisplacers(const Value: array of THAnimDisplacerNode);
     property Mass: Single read GetMass write SetMass;
+    procedure SetMomentsOfInertia(const Value: array of Single);
+    procedure SetMomentsOfInertia(const Value: TSingleList);
     property NameField: string read GetNameField write SetNameField;
 
 {$endif read_interface}
@@ -70,6 +73,18 @@ begin
   FdCoord.Send(Value);
 end;
 
+procedure THAnimSegmentNode.SetDisplacers(const Value: array of THAnimDisplacerNode);
+var
+  L: Integer;
+  A: array of TX3DNode;
+begin
+  L := High(Value) + 1;
+  SetLength(A, L);
+  if L > 0 then
+    Move(Value[0], A[0], L * SizeOf(THAnimDisplacerNode));
+  FdDisplacers.Send(A);
+end;
+
 function THAnimSegmentNode.GetMass: Single;
 begin
   Result := FdMass.Value;
@@ -78,6 +93,16 @@ end;
 procedure THAnimSegmentNode.SetMass(const Value: Single);
 begin
   FdMass.Send(Value);
+end;
+
+procedure THAnimSegmentNode.SetMomentsOfInertia(const Value: array of Single);
+begin
+  FdMomentsOfInertia.Send(Value);
+end;
+
+procedure THAnimSegmentNode.SetMomentsOfInertia(const Value: TSingleList);
+begin
+  FdMomentsOfInertia.Send(Value);
 end;
 
 function THAnimSegmentNode.GetNameField: string;

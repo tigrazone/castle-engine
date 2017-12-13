@@ -1,5 +1,6 @@
 active
 add
+align
 alignment
 anchor
 angle
@@ -107,10 +108,12 @@ events
 examine
 exchange
 execute
+exists
 exported
 exposed
 extract
 faces
+fall
 falling
 family
 field
@@ -128,6 +131,7 @@ focused
 font
 fps
 frame
+framebuffer
 frames
 frustum
 fullscreen
@@ -327,6 +331,7 @@ support
 symbol
 tag
 tags
+target
 text
 texture
 theme

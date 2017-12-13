@@ -17,7 +17,7 @@
 uses SysUtils, Generics.Collections,
   CastleFilesUtils, CastleWindow, CastleResources, CastleScene,
   CastleProgress, CastleWindowProgress, CastleControls, CastleUIControls,
-  CastleUtils, Castle3D, CastleSoundEngine, CastleCreatures, CastleLog;
+  CastleUtils, CastleTransform, CastleSoundEngine, CastleCreatures, CastleLog;
 
 var
   BaseScene: TCastleScene;
@@ -40,23 +40,40 @@ type
 
     Here, to directly show the animation, we go around the normal CastleCreatures
     and CastleItems mechanisms, and we directly get the animation. }
-  TLoopAnimation = class(T3DList)
+  TLoopAnimation = class(TCastleTransform)
   public
     Time: Single;
-    function GetChild: T3D; override;
+    CurrentChild: TCastleTransform;
     procedure Update(const SecondsPassed: Single; var RemoveMe: TRemoveType); override;
   end;
 
-function TLoopAnimation.GetChild: T3D;
-begin
-  if not (GetExists and Resource.Prepared) then Exit;
-  Result := Animation.Scene(Time, true);
-end;
-
 procedure TLoopAnimation.Update(const SecondsPassed: Single; var RemoveMe: TRemoveType);
+
+  function GetChild: TCastleTransform;
+  begin
+    if not (GetExists and Resource.Prepared) then Exit;
+    Result := Animation.Scene(Time, true);
+  end;
+
+  procedure UpdateChild;
+  var
+    NewChild: TCastleTransform;
+  begin
+    NewChild := GetChild;
+    if CurrentChild <> NewChild then
+    begin
+      if CurrentChild <> nil then
+        Remove(CurrentChild);
+      CurrentChild := NewChild;
+      if CurrentChild <> nil then
+        Add(CurrentChild);
+    end;
+  end;
+
 begin
   Time += SecondsPassed;
   VisibleChangeHere([vcVisibleGeometry]);
+  UpdateChild;
 end;
 
 var
@@ -132,7 +149,7 @@ begin
   begin
     Resources.AddFromFile(LastChosenURL);
     { directly prepare new resource }
-    Resources.Prepare(Window.SceneManager.BaseLights, 'resources');
+    Resources.Prepare(Window.SceneManager.PrepareParams, 'resources');
     UpdateButtons(ucpActivateLast);
   end;
 end;
@@ -282,7 +299,7 @@ begin
   { Prepare (load animations) for all resources.
     In a normal game, you would not call this directly, instead you would
     depend on TGameSceneManager.LoadLevel doing this for you. }
-  Resources.Prepare(Window.SceneManager.BaseLights, 'resources');
+  Resources.Prepare(Window.SceneManager.PrepareParams, 'resources');
 
   LoadResourceButton := TLoadResourceButton.Create(Application);
   LoadResourceButton.Caption := 'Add resource...';

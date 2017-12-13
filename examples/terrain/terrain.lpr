@@ -61,8 +61,8 @@ uses SysUtils, Classes,
   CastleCameras, CastleVectors, CastleFilesUtils, CastleTerrain, CastleMessages,
   CastleStringUtils, CastleOnScreenMenu, CastleUIControls, CastleImages,
   RenderTerrains, CastleGLShaders, CastleGLImages, X3DFields, X3DNodes,
-  Castle3D, CastleFrustum, CastleSceneManager, CastleURIUtils,
-  CastleRectangles, CastleControls;
+  CastleTransform, CastleFrustum, CastleSceneManager, CastleURIUtils,
+  CastleRectangles, CastleControls, CastleRendererBaseTypes;
 
 type
   TTerrainType = (ttNoise, ttCasScript, ttImage, ttGrid);
@@ -367,12 +367,12 @@ begin
 end;
 
 type
-  T3DTerrain = class(T3D)
-    function BoundingBox: TBox3D; override;
-    procedure Render(const Frustum: TFrustum; const Params: TRenderParams); override;
+  T3DTerrain = class(TCastleTransform)
+    function LocalBoundingBox: TBox3D; override;
+    procedure LocalRender(const Frustum: TFrustum; const Params: TRenderParams); override;
   end;
 
-procedure T3DTerrain.Render(const Frustum: TFrustum; const Params: TRenderParams);
+procedure T3DTerrain.LocalRender(const Frustum: TFrustum; const Params: TRenderParams);
 
   procedure WalkCameraAboveGround;
   var
@@ -468,7 +468,7 @@ begin
   glPopAttrib;
 end;
 
-function T3DTerrain.BoundingBox: TBox3D;
+function T3DTerrain.LocalBoundingBox: TBox3D;
 { Instead of trying to figure out what is a suitable bounding box,
   just assume we fill the whole 3D space.
   It must be large to always consider terrain within frustum,
@@ -519,6 +519,10 @@ procedure Open(Container: TUIContainer);
   end;
 
 begin
+  { TODO: this demo uses specialized rendering (in renderterrains.pas)
+    that currently assumes some fixed-function things set up. }
+  GLFeatures.EnableFixedFunction := true;
+
   RenderTerrainsOpenGL;
 
   ControlsNoise := TControlsNoise.Create(nil);
@@ -539,8 +543,9 @@ begin
   GLTexRock := LoadTexture('rock_d01.png');
 
   { initialize GLSL program }
-  if TGLSLProgram.ClassSupport <> gsNone then
-    GLSLProgram := TGLSLProgram.Create else
+  if GLFeatures.Shaders <> gsNone then
+    GLSLProgram := TGLSLProgram.Create
+  else
     Shader := false;
   GLSLProgramRegenerate;
 end;
@@ -592,34 +597,34 @@ procedure MenuClick(Container: TUIContainer; Item: TMenuItem);
       begin
         Shader := TComposedShaderNode.Create;
         Shape.Appearance.FdShaders.Add(Shader);
-        Shader.FdLanguage.Value := 'GLSL';
+        Shader.Language := slGLSL; // not actually needed, TComposedShaderNode assumes GLSL by default
 
         { Add shader. Setup everything, like for rendering (without fog). }
         TexSand := TImageTextureNode.Create;
-        TexSand.FdUrl.Items.Add('textures/sand.png');
+        TexSand.SetUrl(['textures/sand.png']);
         TexBread := TImageTextureNode.Create;
-        TexBread.FdUrl.Items.Add('textures/bread.png');
+        TexBread.SetUrl(['textures/bread.png']);
         TexRock := TImageTextureNode.Create;
-        TexRock.FdUrl.Items.Add('textures/rock_d01.png');
-        Shader.AddCustomField(TSFNode.Create(Shader, 'tex_sand', [], TexSand));
-        Shader.AddCustomField(TSFNode.Create(Shader, 'tex_bread', [], TexBread));
-        Shader.AddCustomField(TSFNode.Create(Shader, 'tex_rock', [], TexRock));
-        Shader.AddCustomField(TSFFloat.Create(Shader, 'z0', 0.8));
-        Shader.AddCustomField(TSFFloat.Create(Shader, 'z1', 1.0));
-        Shader.AddCustomField(TSFFloat.Create(Shader, 'z2', 1.2));
-        Shader.AddCustomField(TSFFloat.Create(Shader, 'z3', 1.5));
-        Shader.AddCustomField(TSFFloat.Create(Shader, 'color_scale', 0.2));
-        Shader.AddCustomField(TSFFloat.Create(Shader, 'tex_scale', 0.8));
+        TexRock.SetUrl(['textures/rock_d01.png']);
+        Shader.AddCustomField(TSFNode.Create(Shader, false, 'tex_sand', [], TexSand));
+        Shader.AddCustomField(TSFNode.Create(Shader, false, 'tex_bread', [], TexBread));
+        Shader.AddCustomField(TSFNode.Create(Shader, false, 'tex_rock', [], TexRock));
+        Shader.AddCustomField(TSFFloat.Create(Shader, false, 'z0', 0.8));
+        Shader.AddCustomField(TSFFloat.Create(Shader, false, 'z1', 1.0));
+        Shader.AddCustomField(TSFFloat.Create(Shader, false, 'z2', 1.2));
+        Shader.AddCustomField(TSFFloat.Create(Shader, false, 'z3', 1.5));
+        Shader.AddCustomField(TSFFloat.Create(Shader, false, 'color_scale', 0.2));
+        Shader.AddCustomField(TSFFloat.Create(Shader, false, 'tex_scale', 0.8));
 
         Part := TShaderPartNode.Create;
         Shader.FdParts.Add(Part);
-        Part.FdType.Value := 'FRAGMENT';
-        Part.FdUrl.Items.Add('terrain.fs');
+        Part.ShaderType := stFragment;
+        Part.SetUrl(['terrain.fs']);
 
         Part := TShaderPartNode.Create;
         Shader.FdParts.Add(Part);
-        Part.FdType.Value := 'VERTEX';
-        Part.FdUrl.Items.Add('terrain.vs');
+        Part.ShaderType := stVertex;
+        Part.SetUrl(['terrain.vs']);
       end;
 
       Save3D(Root, URL, 'terrain', '', xeClassic);

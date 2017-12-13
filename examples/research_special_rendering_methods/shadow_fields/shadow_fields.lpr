@@ -199,14 +199,16 @@ begin
 
   { BaseLights will contain our headlight, based on camera (NavigatorAll)
     properties }
-  RenderParams.FBaseLights.Assign(BaseLights);
+  RenderParams.FBaseLights.Assign(
+    PrepareParams.InternalBaseLights as TLightInstancesList);
 
   { TODO: RenderingCamera.Frustum is actually invalid (at least in 2 of 3 cases
     below). But we pass TestShapeVisibility = nil, and we don't use
     VisibilitySensor inside these models, so frustum value isn't really used. }
 
   H.Node.FdOn.Send(false);
-  SceneReceiver.Render(nil, RenderingCamera.Frustum, RenderParams);
+  SceneReceiver.InternalIgnoreFrustum := true;
+  SceneReceiver.Render(RenderingCamera.Frustum, RenderParams);
 
   { turn on headlight for following rendering }
   H.Node.FdOn.Send(true);
@@ -214,13 +216,15 @@ begin
   glPushMatrix;
     glTranslatev(NavigatorData[ntCaster].Pos);
     glScalev(NavigatorData[ntCaster].Scale);
-    SceneCaster.Render(nil, RenderingCamera.Frustum, RenderParams);
+    SceneCaster.InternalIgnoreFrustum := true;
+    SceneCaster.Render(RenderingCamera.Frustum, RenderParams);
   glPopMatrix;
 
   glPushMatrix;
     glTranslatev(NavigatorData[ntLocalLight].Pos);
     glScalev(NavigatorData[ntLocalLight].Scale);
-    SceneLocalLight.Render(nil, RenderingCamera.Frustum, RenderParams);
+    SceneLocalLight.InternalIgnoreFrustum := true;
+    SceneLocalLight.Render(RenderingCamera.Frustum, RenderParams);
   glPopMatrix;
 
   { GL_LIGHTING is disabled by TCastleScene renderer now }
@@ -281,6 +285,10 @@ end;
 
 procedure Open(Container: TUIContainer);
 begin
+  { TODO: this demo uses specialized rendering
+    that currently assumes some fixed-function things set up. }
+  GLFeatures.EnableFixedFunction := true;
+
   GLList_EnvLight := glGenListsCheck(1, 'GLList_EnvLight');
   glNewList(GLList_EnvLight, GL_COMPILE);
     CastleGluSphere(1, 10, 10);
@@ -513,9 +521,6 @@ begin
     AddNavigatorMenu('Local _light source', ntLocalLight);
     AddNavigatorMenu('_Shadow fields explorer', ntSFExplorer);
     AddNavigatorMenu('_Environmental light source', ntEnvLight);
-
-    M.Append(TMenuSeparator.Create);
-    M.Append(TMenuItem.Create('_Next', 20, K_Space));
     Result.Append(M);
 end;
 
@@ -527,14 +532,6 @@ begin
     10..19:
       begin
         Navigator := TNavigatorType(Item.IntData - 10);
-        NavigatorChanged;
-      end;
-
-    20:
-      begin
-        if Navigator = High(Navigator) then
-          Navigator := Low(Navigator) else
-          Navigator := Succ(Navigator);
         NavigatorChanged;
       end;
 
@@ -613,8 +610,7 @@ begin
 
     { initialize navigators }
     BoxSum := SceneCaster.BoundingBox + SceneReceiver.BoundingBox;
-    SceneManager.Camera := SceneReceiver.CreateCamera(Window, BoxSum);
-
+    SceneManager.ExamineCamera.Init(BoxSum, 0.01);
     SceneManager.DefaultVisibilityLimit := 100;
 
     { calculate starting local light position }

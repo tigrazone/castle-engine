@@ -44,6 +44,7 @@
     function GetNormalPerVertex: boolean;
     procedure SetNormalPerVertex(const Value: boolean);
   public
+    procedure SetAttrib(const Value: array of TAbstractVertexAttributeNode);
     property Color: TAbstractColorNode read GetColor write SetColor;
     property Coord: TAbstractCoordinateNode read GetCoord write SetCoord;
     property FogCoord: TFogCoordinateNode read GetFogCoord write SetFogCoord;
@@ -52,12 +53,26 @@
     property Ccw: boolean read GetCcw write SetCcw;
     property ColorPerVertex: boolean read GetColorPerVertex write SetColorPerVertex;
     property NormalPerVertex: boolean read GetNormalPerVertex write SetNormalPerVertex;
+    procedure SetRadianceTransfer(const Value: array of TVector3);
+    procedure SetRadianceTransfer(const Value: TVector3List);
 
 {$endif read_interface}
 
 {$ifdef read_implementation}
 
 { TAbstractComposedGeometryNode ----------------------------------------------- }
+
+procedure TAbstractComposedGeometryNode.SetAttrib(const Value: array of TAbstractVertexAttributeNode);
+var
+  L: Integer;
+  A: array of TX3DNode;
+begin
+  L := High(Value) + 1;
+  SetLength(A, L);
+  if L > 0 then
+    Move(Value[0], A[0], L * SizeOf(TAbstractVertexAttributeNode));
+  FdAttrib.Send(A);
+end;
 
 function TAbstractComposedGeometryNode.GetColor: TAbstractColorNode;
 begin
@@ -152,6 +167,16 @@ end;
 procedure TAbstractComposedGeometryNode.SetNormalPerVertex(const Value: boolean);
 begin
   FdNormalPerVertex.Send(Value);
+end;
+
+procedure TAbstractComposedGeometryNode.SetRadianceTransfer(const Value: array of TVector3);
+begin
+  FdRadianceTransfer.Send(Value);
+end;
+
+procedure TAbstractComposedGeometryNode.SetRadianceTransfer(const Value: TVector3List);
+begin
+  FdRadianceTransfer.Send(Value);
 end;
 
 {$endif read_implementation}

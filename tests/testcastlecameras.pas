@@ -49,7 +49,7 @@ const
     (Data: (0, 0, 1, 0)),
     (Data: (0, 1, 0, 1.5708)),
     { Here original orient.c failed, as far as I remember.
-      Looks like my CamDirUp2Orient fixes this. }
+      Looks like my OrientationFromDirectionUp fixes this. }
     (Data: (0.9133538007736206, -0.23269428312778472, -0.33412325382232666, 1.807408332824707))
   );
 
@@ -70,7 +70,7 @@ begin
  for i := 0 to High(TestOrients) do
  begin
   CamOrientToDirUp(TestOrients[i], Dir, Up);
-  NewOrient := CamDirUp2Orient(Dir, Up);
+  NewOrient := OrientationFromDirectionUp(Dir, Up);
   if not ( (IsZero(NewOrient[3]) and IsZero(TestOrients[i][3])) or
 	   TVector4.Equals(NewOrient, TestOrients[i], EqEpsilon) ) then
   begin
@@ -129,9 +129,9 @@ const
     Orientation: TQuaternion;
   begin
     if not IsZero(TVector3.DotProduct(Dir, Up), 0.001) then
-      Fail(TestName + ': Given test dir/up not orthogonal, CamDirUp2OrientQuat assumes it');
+      Fail(TestName + ': Given test dir/up not orthogonal, OrientationQuaternionFromDirectionUp assumes it');
 
-    Orientation := CamDirUp2OrientQuat(Dir, Up).Conjugate;
+    Orientation := OrientationQuaternionFromDirectionUp(Dir, Up).Conjugate;
     try
       AssertTrue(TVector3.Equals(Orientation.Rotate(Dir.Normalize), DefaultX3DCameraDirection, 0.01));
       AssertTrue(TVector3.Equals(Orientation.Rotate(Up .Normalize), DefaultX3DCameraUp       , 0.01));
@@ -168,18 +168,10 @@ procedure TTestCameras.TestInput;
     if C is TExamineCamera then
       AssertTrue(TExamineCamera(C).MouseNavigation = MouseNavigation);
     {$warnings on}
-    { for TUniversalCamera, child examine/walk must always have synchronized
-      properties }
-    if C is TUniversalCamera then
-    begin
-      AssertCamera(TUniversalCamera(C).Walk   , Input, IgnoreAllInputs, MouseNavigation);
-      AssertCamera(TUniversalCamera(C).Examine, Input, IgnoreAllInputs, MouseNavigation);
-    end;
   end;
 
 var
   E: TExamineCamera;
-  U: TUniversalCamera;
   W: TWalkCamera;
 begin
   E := TExamineCamera.Create(nil);
@@ -197,22 +189,6 @@ begin
     E.Input := [ciNormal];
     AssertCamera(E, [ciNormal], false, false);
   finally FreeAndNil(E) end;
-
-  U := TUniversalCamera.Create(nil);
-  try
-    AssertCamera(U, TCamera.DefaultInput, false, true);
-    U.Input := [];
-    AssertCamera(U, [], true, false);
-    U.Input := U.Input + [ciMouseDragging];
-    AssertCamera(U, [ciMouseDragging], false, true);
-    {$warnings off}
-    { Consciously using here deprecated IgnoreAllInputs (to test it's still Ok) }
-    U.IgnoreAllInputs := true;
-    {$warnings on}
-    AssertCamera(U, [], true, false);
-    U.Input := [ciNormal];
-    AssertCamera(U, [ciNormal], false, false);
-  finally FreeAndNil(U) end;
 
   W := TWalkCamera.Create(nil);
   try

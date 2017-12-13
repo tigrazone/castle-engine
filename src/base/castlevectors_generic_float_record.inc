@@ -133,7 +133,7 @@ type
     class function PerfectlyEquals(const V1, V2: TGenericVector2): boolean; static; inline;
 
     { Linear interpolation between two vector values.
-      @seealso @link(TVector3.Lerp) }
+      @seealso TGenericVector3.Lerp }
     class function Lerp(const A: TGenericScalar; const V1, V2: TGenericVector2): TGenericVector2; static; inline;
 
     {$ifndef ENABLE_SELF_RECORD_CONSTANTS}
@@ -397,7 +397,7 @@ type
     function XYZ: TGenericVector3; inline;
 
     { Linear interpolation between two vector values.
-      @seealso @link(TVector3.Lerp) }
+      Works analogous to @link(TGenericVector3.Lerp TVector3.Lerp) }
     class function Lerp(const A: TGenericScalar; const V1, V2: TGenericVector4): TGenericVector4; static; inline;
 
     {$ifndef ENABLE_SELF_RECORD_CONSTANTS}
@@ -476,7 +476,7 @@ type
     class function PerfectlyEquals(const M1, M2: TGenericMatrix2): boolean; static;
 
     { Linear interpolation between two matrix values.
-      @seealso @link(TVector3.Lerp) }
+      @seealso TGenericVector3.Lerp }
     class function Lerp(const A: TGenericScalar; const M1, M2: TGenericMatrix2): TGenericMatrix2; static;
 
     {$ifndef ENABLE_SELF_RECORD_CONSTANTS}
@@ -570,7 +570,7 @@ type
     class function PerfectlyEquals(const M1, M2: TGenericMatrix3): boolean; static;
 
     { Linear interpolation between two matrix values.
-      @seealso @link(TVector3.Lerp) }
+      @seealso TGenericVector3.Lerp }
     class function Lerp(const A: TGenericScalar; const M1, M2: TGenericMatrix3): TGenericMatrix3; static;
 
     {$ifndef ENABLE_SELF_RECORD_CONSTANTS}
@@ -681,7 +681,7 @@ type
     class function PerfectlyEquals(const M1, M2: TGenericMatrix4): boolean; static;
 
     { Linear interpolation between two matrix values.
-      @seealso @link(TVector3.Lerp) }
+      @seealso TGenericVector3.Lerp }
     class function Lerp(const A: TGenericScalar; const M1, M2: TGenericMatrix4): TGenericMatrix4; static;
 
     {$ifndef ENABLE_SELF_RECORD_CONSTANTS}
@@ -2015,6 +2015,11 @@ class operator TGenericMatrix4.{$ifdef FPC}*{$else}Multiply{$endif} (const M: TG
 {var
   I, J: Integer;}
 begin
+  { We cannot have this uncommented (because we cannot use blindly Writeln,
+    and depending on CastleLog for WritelnWarning makes FPC internal errors).
+  if @V = @Result then
+    Writeln('TGenericMatrix4.Multiply(vector) may be invalid: Argument and Result have the same address'); }
+
   {
   for I := 0 to 3 do
   begin
@@ -2250,6 +2255,11 @@ begin
   { Simple implementation:
   Result := (M * Vector4(Pt, 1)).ToPosition; }
 
+  { We cannot have this uncommented (because we cannot use blindly Writeln,
+    and depending on CastleLog for WritelnWarning makes FPC internal errors).
+  if @Pt = @Result then
+    Writeln('TGenericMatrix4.MultPoint may be invalid: Argument and Result have the same address'); }
+
   Result.Data[0] := Data[0, 0] * Pt.Data[0] + Data[1, 0] * Pt.Data[1] + Data[2, 0] * Pt.Data[2] + Data[3, 0];
   Result.Data[1] := Data[0, 1] * Pt.Data[0] + Data[1, 1] * Pt.Data[1] + Data[2, 1] * Pt.Data[2] + Data[3, 1];
   Result.Data[2] := Data[0, 2] * Pt.Data[0] + Data[1, 2] * Pt.Data[1] + Data[2, 2] * Pt.Data[2] + Data[3, 2];
@@ -2307,6 +2317,11 @@ function TGenericMatrix4.MultDirection(const Dir: TGenericVector3): TGenericVect
 var
   Divisor: TGenericScalar;
 begin
+  { We cannot have this uncommented (because we cannot use blindly Writeln,
+    and depending on CastleLog for WritelnWarning makes FPC internal errors).
+  if @Dir = @Result then
+    Writeln('TGenericMatrix4.MultDirection may be invalid: Argument and Result have the same address'); }
+
   Result.Data[0] := Data[0, 0] * Dir.Data[0] + Data[1, 0] * Dir.Data[1] + Data[2, 0] * Dir.Data[2];
   Result.Data[1] := Data[0, 1] * Dir.Data[0] + Data[1, 1] * Dir.Data[1] + Data[2, 1] * Dir.Data[2];
   Result.Data[2] := Data[0, 2] * Dir.Data[0] + Data[1, 2] * Dir.Data[1] + Data[2, 2] * Dir.Data[2];

@@ -40,7 +40,7 @@ type
       Notifications := TCastleNotifications.Create(Owner);
       Notifications.Anchor(hpMiddle);
       Notifications.Anchor(vpMiddle);
-      Notifications.TextAlign := hpMiddle; // looks best, when anchor is also in the middle
+      Notifications.TextAlignment := hpMiddle; // looks best, when anchor is also in the middle
     #) }
   TCastleNotifications = class(TUIControlFont)
   private
@@ -196,7 +196,7 @@ var
   Broken: TStringList;
 begin
   if Log then
-    WritelnLog('Notification', S.Text);
+    WritelnLog('Notification', Trim(S.Text));
 
   { before Notifications are part of some Controls list,
     we don't know about Parent or Container size. }

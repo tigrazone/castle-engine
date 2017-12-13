@@ -122,6 +122,10 @@ type
     Value:
       {$ifdef UNIX} clock_t {$endif}
       {$ifdef MSWINDOWS} DWord {$endif};
+  public
+    { Seconds passed since this time sample up to now.
+      Equivalent to @code(ProcessTimerSeconds(ProcessTimer, Self)) }
+    function ElapsedTime: TFloatTime;
   end;
 
 const
@@ -154,11 +158,25 @@ const
   and it ignores things like waiting for hard disk (I/O).
   This is possible on Unix thanks to the @code(clock) API,
   see http://www.gnu.org/software/libc/manual/html_node/Processor-And-CPU-Time.html .
-  On other platforms (like Windows),
-  this simply measures real time that passed.
+  On other platforms (like Windows), this simply measures real time that passed.
 
-  You take two ProcessTimer values, subtract them with @link(ProcessTimerSeconds),
-  this is the time that passed -- in seconds. }
+  You usually take two ProcessTimer values,
+  subtract them with @link(ProcessTimerSeconds),
+  and this is the time that passed -- in seconds. Like this:
+
+  @longCode(#
+  var
+    TimeStart: TProcessTimerResult;
+    Seconds: TFloatTime;
+  begin
+    TimeStart := ProcessTimer;
+    // ...  do something time-consuming ...
+    Seconds := ProcessTimerSeconds(ProcessTimer, TimeStart);
+    // or: Seconds := TimeStart.ElapsedTime;
+    WritelnLog('Seconds passed (in this process): %f', [Seconds]);
+  end;
+  #)
+}
 function ProcessTimer: TProcessTimerResult;
 
 function ProcessTimerNow: TProcessTimerResult; deprecated 'use ProcessTimer';
@@ -202,13 +220,17 @@ type
     { The type of this could be platform-dependent. But for now, all platforms
       are happy with Int64. }
     Value: Int64;
+  public
+    { Seconds passed since this time sample up to now.
+      Equivalent to @code(TimerSeconds(Timer, Self)) }
+    function ElapsedTime: TFloatTime;
   end;
 
-{ Current time, to measure real time passed.
-  This may be a time local to this process. It is a "real" time,
-  which means that subtracting two values measures the actual time
-  that passed between two events. Contrast this with @link(ProcessTimer)
-  and friends that try to measure only CPU time used by the current process.
+{ Timer to measure (real) time passed during some operations.
+  It is a "real" time, which means that subtracting two values measures
+  the actual time that passed between two events.
+  Contrast this with @link(ProcessTimer) that tries to measure
+  only CPU time used by the current process.
 
   Call Timer twice, and calculate the difference (in seconds)
   using the TimerSeconds. Like this:
@@ -221,7 +243,8 @@ type
     TimeStart := Timer;
     // ...  do something time-consuming ...
     Seconds := TimerSeconds(Timer, TimeStart);
-    Writeln('Seconds passed: ', Seconds:1:2);
+    // or: Seconds := TimeStart.ElapsedTime;
+    WritelnLog('Seconds passed: %f', [Seconds]);
   end;
   #)
 }
@@ -343,8 +366,8 @@ type
 
       Changed when each container "update" event occurs,
       so this is equal during all @link(TInputListener.Update),
-      @link(TUIControl.Render), @link(T3D.Update),
-      @link(T3D.Render) occuring within the same frame.
+      @link(TUIControl.Render), @link(TCastleTransform.Update),
+      @link(TCastleTransform.LocalRender) occuring within the same frame.
       You can use this to avoid performing the same job many times
       in a single frame.
 
@@ -545,6 +568,11 @@ begin
   Result := ProcessTimerSeconds(ProcessTimer, LastProcessTimerBegin);
 end;
 
+function TProcessTimerResult.ElapsedTime: TFloatTime;
+begin
+  Result := ProcessTimerSeconds(ProcessTimer, Self);
+end;
+
 { timer ---------------------------------------------------------- }
 
 {$ifdef MSWINDOWS}
@@ -635,6 +663,11 @@ end;
 function TimerSeconds(const A, B: TTimerResult): TFloatTime;
 begin
   Result := (A.Value - B.Value) / TimerFrequency;
+end;
+
+function TTimerResult.ElapsedTime: TFloatTime;
+begin
+  Result := TimerSeconds(Timer, Self);
 end;
 
 { TFramesPerSecond ----------------------------------------------------------- }

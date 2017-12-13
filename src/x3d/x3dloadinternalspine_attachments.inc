@@ -64,6 +64,7 @@
       Looking as official Spine runtime in spine-csharp and spine-unity,
       it is also unused there. }
     Hull: Integer;
+    Invalid: boolean;
     constructor Create;
     destructor Destroy; override;
     procedure Parse(const Json: TJSONObject; const Bones: TBoneList); override;
@@ -148,12 +149,10 @@ begin
     Result.AttachmentName := AnAttachmentName;
     Result.Parse(Json, Bones);
   end else
-  if TypeName = 'boundingbox' then
   begin
-    WritelnWarning('Spine', 'Spine region type "boundingbox" is ignored for now');
+    WritelnWarning('Spine', 'Spine region (attachment) type "%s" is not supported', [TypeName]);
     Result := nil;
-  end else
-    raise ESpineReadError.CreateFmt('Attachment type "%s" not supported', [TypeName]);
+  end;
 end;
 
 procedure TAttachment.Parse(const Json: TJSONObject; const Bones: TBoneList);
@@ -233,21 +232,15 @@ function TRegionAttachment.BuildGeometry(const BaseUrl: string;
 var
   Coord: TCoordinateNode;
   TexCoordNode: TTextureCoordinateNode;
-  I: Integer;
   Faces: TIndexedFaceSetNode;
   Rect: array [0..1] of TVector2;
 begin
   Faces := TIndexedFaceSetNode.Create('', BaseUrl);
   Result := Faces;
 
-  Faces.FdCreaseAngle.Value := 0; // optimization: do not try to smooth normals, no point
-  Faces.FdSolid.Value := false;
-  Faces.FdCoordIndex.Items.Clear;
-
-  Faces.FdCoordIndex.Items.Add(0);
-  Faces.FdCoordIndex.Items.Add(1);
-  Faces.FdCoordIndex.Items.Add(2);
-  Faces.FdCoordIndex.Items.Add(3);
+  Faces.CreaseAngle := 0; // optimization: do not try to smooth normals, no point
+  Faces.Solid := false;
+  Faces.SetCoordIndex([0, 1, 2, 3]);
 
   Coord := TCoordinateNode.Create('', Faces.BaseUrl);
   Rect[0] := Vector2(
@@ -256,16 +249,20 @@ begin
   Rect[1] := Vector2(
     MapRange(TexRect[1][0], 0, 1, -Width / 2, Width / 2),
     MapRange(TexRect[1][1], 0, 1, -Height / 2, Height / 2));
-  Coord.FdPoint.Items.Add(Vector3(Rect[0][0], Rect[0][1], 0));
-  Coord.FdPoint.Items.Add(Vector3(Rect[1][0], Rect[0][1], 0));
-  Coord.FdPoint.Items.Add(Vector3(Rect[1][0], Rect[1][1], 0));
-  Coord.FdPoint.Items.Add(Vector3(Rect[0][0], Rect[1][1], 0));
+  Coord.SetPoint([
+    Vector3(Rect[0][0], Rect[0][1], 0),
+    Vector3(Rect[1][0], Rect[0][1], 0),
+    Vector3(Rect[1][0], Rect[1][1], 0),
+    Vector3(Rect[0][0], Rect[1][1], 0)]);
   Faces.Coord := Coord;
 
   TexCoordNode := TTextureCoordinateNode.Create('', Faces.BaseUrl);
-  for I := 0 to 3 do
-    TexCoordNode.FdPoint.Items.Add(TexCoord[I]);
-  Faces.FdTexCoord.Value := TexCoordNode;
+  TexCoordNode.SetPoint([
+    TexCoord[0],
+    TexCoord[1],
+    TexCoord[2],
+    TexCoord[3]]);
+  Faces.TexCoord := TexCoordNode;
 end;
 
 { TAbstractMeshAttachment ---------------------------------------------------- }
@@ -315,11 +312,12 @@ begin
   Faces := TIndexedTriangleSetNode.Create('', BaseUrl);
   Result := Faces;
 
-  Faces.FdNormalPerVertex.Value := false; // optimization: do not try to smooth normals, no point
-  Faces.FdSolid.Value := false;
-  Faces.FdIndex.Items.Clear;
+  // do not call SetIndex in case Vertices count is known to be invalid
+  if Invalid then Exit;
 
-  Faces.FdIndex.Items.Assign(Triangles);
+  Faces.NormalPerVertex := false; // optimization: do not try to smooth normals, no point
+  Faces.Solid := false;
+  Faces.SetIndex(Triangles);
 
   Coord := TCoordinateNode.Create('', Faces.BaseUrl);
   for I := 0 to Vertices.Count - 1 do
@@ -370,11 +368,17 @@ procedure TMeshAttachment.Parse(const Json: TJSONObject; const Bones: TBoneList)
 begin
   inherited;
   ReadVector2List(Json, 'vertices', Vertices);
+
+  if Vertices.Count > UVs.Count then
+  begin
+    WritelnWarning('Spine', 'A weighted mesh (when the number of vertices > number of uvs) is not supported');
+    Invalid := true;
+  end else
   if UVs.Count <> Vertices.Count then
   begin
     WritelnWarning('Spine', Format('uvs and vertices lists have different number of items, respectively %d and %d, for mesh attachment %s',
       [UVs.Count, Vertices.Count, Name]));
-    Vertices.Count := UVs.Count;
+    Invalid := true;
   end;
 end;
 

@@ -40,6 +40,7 @@ var
 procedure Update(Container: TUIContainer);
 var
   I, J: Integer;
+  T: TVector3;
 begin
   { We want to keep track of current time here (for calculating
     below). It's most natural to just use Scene.Time property for this.
@@ -48,10 +49,11 @@ begin
   for I := 0 to XCount - 1 do
     for J := 0 to YCount - 1 do
     begin
-      Transform[I, J].FdTranslation.Value[2] := 2 *
+      T := Transform[I, J].Translation;
+      T[2] := 2 *
         Sin(I / 2 + Scene.Time) *
         Cos(J / 2 + Scene.Time);
-      Transform[I, J].FdTranslation.Changed;
+      Transform[I, J].Translation := T;
     end;
 end;
 
@@ -68,7 +70,7 @@ begin
 
   Shape := TShapeNode.Create;
   Shape.Appearance := TAppearanceNode.Create;
-  Shape.Appearance.FdMaterial.Value := Mat;
+  Shape.Appearance.Material := Mat;
   Shape.Geometry := TBoxNode.Create;
 
   for I := 0 to XCount - 1 do
@@ -105,10 +107,9 @@ begin
     Window.SceneManager.Items.Add(Scene);
 
     { init SceneManager.Camera }
-    Window.SceneManager.Camera := TExamineCamera.Create(Window);
-    (Window.SceneManager.Camera as TExamineCamera).Init(Scene.BoundingBox, 0.1);
+    Window.SceneManager.ExamineCamera.Init(Scene.BoundingBox, 0.1);
     { set more interesting view by default }
-    (Window.SceneManager.Camera as TExamineCamera).Rotations := QuatFromAxisAngle(
+    Window.SceneManager.ExamineCamera.Rotations := QuatFromAxisAngle(
       Vector3(1, 1, 0).Normalize, Pi/4);
 
     Window.OnUpdate := @Update;

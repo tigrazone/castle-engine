@@ -1,7 +1,10 @@
-/* Fallback GLSL vertex shader,
-   used for OpenGL ES when normal shader did not compile.
-   This is merely used to avoid crashing the application (you cannot leave
-   the shader empty in OpenGLES). */
+/* Fallback GLSL vertex shader.
+
+   Used when we need a shader (e.g. because it is OpenGLES or
+   GLFeatures.EnableFixedFunction = false),
+   but the default shader did not compile.
+   You cannot leave the shader empty in OpenGLES.
+*/
 
 uniform mat4 castle_ModelViewMatrix;
 uniform mat4 castle_ProjectionMatrix;

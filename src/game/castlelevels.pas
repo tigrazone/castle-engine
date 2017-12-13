@@ -24,17 +24,14 @@ interface
 uses Classes, DOM, Generics.Collections,
   CastleVectors, CastleSceneCore, CastleScene, CastleBoxes, X3DNodes,
   X3DFields, CastleCameras, CastleSectors, CastleUtils, CastleClassUtils,
-  CastlePlayer, CastleResources, CastleProgress, CastlePrecalculatedAnimation,
-  CastleSoundEngine, Castle3D, CastleShapes, CastleXMLConfig, CastleImages,
+  CastlePlayer, CastleResources, CastleProgress,
+  CastleSoundEngine, CastleTransform, CastleShapes, CastleXMLConfig, CastleImages,
   CastleTimeUtils, CastleSceneManager, CastleFindFiles;
 
 type
   TLevelLogic = class;
   TLevelLogicClass = class of TLevelLogic;
   TCastleSceneClass = class of TCastleScene;
-  {$warnings off}
-  TCastlePrecalculatedAnimationClass = class of TCastlePrecalculatedAnimation;
-  {$warnings on}
   TGameSceneManager = class;
 
   TLevelInfo = class
@@ -104,10 +101,10 @@ type
       as TCastleSceneManager.MainScene,
       so it determines the default viewpoint, background and such.
 
-      Usually it also contains the most (if not all) of 3D level visible geometry,
+      Usually it also contains the most (if not all) of the visible level geometry,
       scripts and such. Although level logic (TLevelLogic descendant determined
-      by LevelClass) may also add any number of additional 3D objects
-      (T3D instances) to the 3D world. }
+      by LevelClass) may also add any number of additional objects
+      (TCastleTransform instances) to the world. }
     property SceneURL: string read FSceneURL write FSceneURL;
 
     { @deprecated Deprecated name for SceneURL. }
@@ -440,28 +437,10 @@ type
     way to add any behavior to the 3D world (it doesn't matter that
     "level logic" is not a usual 3D object --- it doesn't have to collide
     or be visible). }
-  TLevelLogic = class(T3D)
+  TLevelLogic = class(TCastleTransform)
   private
     FTime: TFloatTime;
   protected
-    { Load 3D precalculated animation (from *.castle-anim-frames or *.md3 file), doing common tasks.
-      @unorderedList(
-        @item optionally creates triangle octree for the FirstScene and/or LastScene
-        @item(call PrepareResources, with prRender, prBoundingBox, prShadowVolume
-          (if shadow volumes possible at all in this OpenGL context))
-        @item Free texture data, since they will not be needed anymore
-        @item TimePlaying is by default @false, so the animation is not playing.
-      )
-      @groupBegin }
-    function LoadLevelAnimation(const URL: string;
-      const CreateFirstOctreeCollisions, CreateLastOctreeCollisions: boolean;
-      const AnimationClass: TCastlePrecalculatedAnimationClass): TCastlePrecalculatedAnimation;
-      deprecated 'whole TCastlePrecalculatedAnimation is deprecated, use TCastleScene for rendering all animations';
-    function LoadLevelAnimation(const URL: string;
-      const CreateFirstOctreeCollisions, CreateLastOctreeCollisions: boolean): TCastlePrecalculatedAnimation;
-      deprecated 'whole TCastlePrecalculatedAnimation is deprecated, use TCastleScene for rendering all animations';
-    { @groupEnd }
-
     { Load 3D scene from file, doing common tasks.
       @unorderedList(
         @item optionally create triangle octree
@@ -516,9 +495,9 @@ type
         #)
       )
     }
-    constructor Create(AOwner: TComponent; AWorld: T3DWorld;
+    constructor Create(AOwner: TComponent; AWorld: TSceneManagerWorld;
       MainScene: TCastleScene; DOMElement: TDOMElement); reintroduce; virtual;
-    function BoundingBox: TBox3D; override;
+    function LocalBoundingBox: TBox3D; override;
 
     { Called when new player starts new game on this level.
       This may be used to equip the player with some basic weapon / items.
@@ -841,7 +820,8 @@ var
       TWalkCamera.DefaultCrouchHeight, TWalkCamera.DefaultHeadBobbing);
 
     if Player <> nil then
-      WalkCamera := Player.Camera else
+      WalkCamera := Player.Camera
+    else
       { If you don't initialize Player (like for castle1 background level
         or castle-view-level or lets_take_a_walk) then just create a camera. }
       WalkCamera := TWalkCamera.Create(Self);
@@ -922,7 +902,7 @@ begin
     be after loading MainScene (because initial camera looks at MainScene
     contents).
     It will show it's own progress bar. }
-  Info.LevelResources.Prepare(BaseLights);
+  Info.LevelResources.Prepare(PrepareParams);
   LevelResourcesPrepared := true;
   PreviousResources.Release;
   FreeAndNil(PreviousResources);
@@ -958,7 +938,7 @@ begin
     if (GLFeatures <> nil) and GLFeatures.ShadowVolumesPossible then
       Include(Options, prShadowVolume);
 
-    MainScene.PrepareResources(Options, false, BaseLights);
+    MainScene.PrepareResources(Options, false, PrepareParams);
 
     MainScene.FreeResources([frTextureDataInNodes]);
 
@@ -972,7 +952,7 @@ begin
   MainScene.TriangleOctreeProgressTitle := 'Loading level (triangle octree)';
   MainScene.ShapeOctreeProgressTitle := 'Loading level (Shape octree)';
   MainScene.Spatial := [ssRendering, ssDynamicCollisions];
-  MainScene.PrepareResources([prSpatial], false, BaseLights);
+  MainScene.PrepareResources([prSpatial], false, PrepareParams);
 
   if (Player <> nil) then
     Player.LevelChanged;
@@ -1038,19 +1018,20 @@ end;
 
 { TLevelLogic ---------------------------------------------------------------- }
 
-constructor TLevelLogic.Create(AOwner: TComponent; AWorld: T3DWorld;
+constructor TLevelLogic.Create(AOwner: TComponent; AWorld: TSceneManagerWorld;
   MainScene: TCastleScene; DOMElement: TDOMElement);
 begin
   inherited Create(AOwner);
-  SetWorld(AWorld);
   Assert(AWorld <> nil, 'TLevelLogic.World should never be nil, you have to provide World at TLevelLogic constructor');
+  AddToWorld(AWorld);
+
   { Actually, the fact that our BoundingBox is empty also prevents collisions.
     But for some methods, knowing that Collides = false allows them to exit
     faster. }
   Collides := false;
 end;
 
-function TLevelLogic.BoundingBox: TBox3D;
+function TLevelLogic.LocalBoundingBox: TBox3D;
 begin
   { This object is invisible and non-colliding. }
   Result := TBox3D.Empty;
@@ -1076,7 +1057,7 @@ begin
   if (GLFeatures <> nil) and GLFeatures.ShadowVolumesPossible then
     Include(Options, prShadowVolume);
 
-  Result.PrepareResources(Options, false, World.BaseLights);
+  Result.PrepareResources(Options, false, World.PrepareParams);
 
   if PrepareForCollisions then
     Result.Spatial := [ssDynamicCollisions];
@@ -1091,46 +1072,6 @@ function TLevelLogic.LoadLevelScene(
   const PrepareForCollisions: boolean): TCastleScene;
 begin
   Result := LoadLevelScene(URL, PrepareForCollisions, TCastleScene);
-end;
-
-function TLevelLogic.LoadLevelAnimation(
-  const URL: string;
-  const CreateFirstOctreeCollisions, CreateLastOctreeCollisions: boolean;
-  const AnimationClass: TCastlePrecalculatedAnimationClass): TCastlePrecalculatedAnimation;
-var
-  Options: TPrepareResourcesOptions;
-begin
-  Result := AnimationClass.Create(Self);
-  Result.LoadFromFile(URL, false, true);
-
-  { calculate Options for PrepareResources }
-  Options := [prRender, prBoundingBox { always needed }];
-  if (GLFeatures <> nil) and GLFeatures.ShadowVolumesPossible then
-    Include(Options, prShadowVolume);
-
-  Result.PrepareResources(Options, false, World.BaseLights);
-
-  if CreateFirstOctreeCollisions then
-    Result.FirstScene.Spatial := [ssDynamicCollisions];
-
-  if CreateLastOctreeCollisions then
-    Result.LastScene.Spatial := [ssDynamicCollisions];
-
-  Result.FreeResources([frTextureDataInNodes]);
-
-  Result.TimePlaying := false;
-end;
-
-function TLevelLogic.LoadLevelAnimation(
-  const URL: string;
-  const CreateFirstOctreeCollisions, CreateLastOctreeCollisions: boolean): TCastlePrecalculatedAnimation;
-begin
-  {$warnings off}
-  { knowingly using deprecated function in another deprecated function }
-  Result := LoadLevelAnimation(URL,
-    CreateFirstOctreeCollisions, CreateLastOctreeCollisions,
-    TCastlePrecalculatedAnimation);
-  {$warnings on}
 end;
 
 procedure TLevelLogic.Update(const SecondsPassed: Single; var RemoveMe: TRemoveType);

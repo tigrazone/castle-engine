@@ -39,8 +39,21 @@
     procedure SetBboxSize(const Value: TVector3);
   public
     property Center: TVector3Double read GetCenter write SetCenter;
+    procedure SetChild1Url(const Value: array of string);
+    procedure SetChild1Url(const Value: TCastleStringList);
+    procedure SetChild2Url(const Value: array of string);
+    procedure SetChild2Url(const Value: TCastleStringList);
+    procedure SetChild3Url(const Value: array of string);
+    procedure SetChild3Url(const Value: TCastleStringList);
+    procedure SetChild4Url(const Value: array of string);
+    procedure SetChild4Url(const Value: TCastleStringList);
     property GeoOrigin: TGeoOriginNode read GetGeoOrigin write SetGeoOrigin;
+    procedure SetGeoSystem(const Value: array of string);
+    procedure SetGeoSystem(const Value: TCastleStringList);
     property Range: Single read GetRange write SetRange;
+    procedure SetRootUrl(const Value: array of string);
+    procedure SetRootUrl(const Value: TCastleStringList);
+    procedure SetRootNode(const Value: array of TAbstractChildNode);
     property BboxCenter: TVector3 read GetBboxCenter write SetBboxCenter;
     property BboxSize: TVector3 read GetBboxSize write SetBboxSize;
 
@@ -60,6 +73,46 @@ begin
   FdCenter.Send(Value);
 end;
 
+procedure TGeoLODNode.SetChild1Url(const Value: array of string);
+begin
+  FdChild1Url.Send(Value);
+end;
+
+procedure TGeoLODNode.SetChild1Url(const Value: TCastleStringList);
+begin
+  FdChild1Url.Send(Value);
+end;
+
+procedure TGeoLODNode.SetChild2Url(const Value: array of string);
+begin
+  FdChild2Url.Send(Value);
+end;
+
+procedure TGeoLODNode.SetChild2Url(const Value: TCastleStringList);
+begin
+  FdChild2Url.Send(Value);
+end;
+
+procedure TGeoLODNode.SetChild3Url(const Value: array of string);
+begin
+  FdChild3Url.Send(Value);
+end;
+
+procedure TGeoLODNode.SetChild3Url(const Value: TCastleStringList);
+begin
+  FdChild3Url.Send(Value);
+end;
+
+procedure TGeoLODNode.SetChild4Url(const Value: array of string);
+begin
+  FdChild4Url.Send(Value);
+end;
+
+procedure TGeoLODNode.SetChild4Url(const Value: TCastleStringList);
+begin
+  FdChild4Url.Send(Value);
+end;
+
 function TGeoLODNode.GetGeoOrigin: TGeoOriginNode;
 begin
   if FdGeoOrigin.Value is TGeoOriginNode then
@@ -73,6 +126,16 @@ begin
   FdGeoOrigin.Send(Value);
 end;
 
+procedure TGeoLODNode.SetGeoSystem(const Value: array of string);
+begin
+  FdGeoSystem.Send(Value);
+end;
+
+procedure TGeoLODNode.SetGeoSystem(const Value: TCastleStringList);
+begin
+  FdGeoSystem.Send(Value);
+end;
+
 function TGeoLODNode.GetRange: Single;
 begin
   Result := FdRange.Value;
@@ -81,6 +144,28 @@ end;
 procedure TGeoLODNode.SetRange(const Value: Single);
 begin
   FdRange.Send(Value);
+end;
+
+procedure TGeoLODNode.SetRootUrl(const Value: array of string);
+begin
+  FdRootUrl.Send(Value);
+end;
+
+procedure TGeoLODNode.SetRootUrl(const Value: TCastleStringList);
+begin
+  FdRootUrl.Send(Value);
+end;
+
+procedure TGeoLODNode.SetRootNode(const Value: array of TAbstractChildNode);
+var
+  L: Integer;
+  A: array of TX3DNode;
+begin
+  L := High(Value) + 1;
+  SetLength(A, L);
+  if L > 0 then
+    Move(Value[0], A[0], L * SizeOf(TAbstractChildNode));
+  FdRootNode.Send(A);
 end;
 
 function TGeoLODNode.GetBboxCenter: TVector3;

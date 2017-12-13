@@ -13,8 +13,8 @@
   ----------------------------------------------------------------------------
 }
 
-{ Powerful automatic interpolation for VRML/X3D node hierarchies,
-  used by CastlePrecalculatedAnimation now. }
+{ Powerful automatic interpolation for any X3D node hierarchies,
+  able to animate a sequence of any X3D scenes. }
 unit CastleInternalNodeInterpolator;
 
 {$I castleconf.inc}
@@ -703,7 +703,7 @@ begin
         on E: EModelsStructureDifferent do
         begin
           if Log then
-            WritelnLog('PrecalculatedAnimation', Format(
+            WritelnLog('TNodeInterpolator', Format(
               'Nodes %d and %d structurally different, so animation will not be smoothed between them: ',
               [I - 1, I]) + E.Message);
         end;
@@ -719,8 +719,7 @@ begin
         KeyNodesEqual := NodesMerge(NewKeyNode, LastKeyNode, Epsilon);
         if KeyNodesEqual then
         begin
-          { In this case don't waste memory, simply reuse
-            LastKeyNode. }
+          { In this case don't waste memory, simply reuse Nodes[LastNodesIndex]. }
           FreeAndNil(NewKeyNode);
           for NodesIndex := LastNodesIndex + 1 to Nodes.Count - 1 do
             Nodes[NodesIndex] := Nodes[LastNodesIndex];
@@ -1013,7 +1012,12 @@ var
     Switch := TSwitchNode.Create(
       AnimationX3DName + '_Switch_ChooseAnimationFrame', BaseUrl);
     for I := 0 to NodesCount - 1 do
-      Switch.AddChildren(WrapRootNode(BakedAnimation.Nodes[I] as TX3DRootNode));
+      { Add using FdChildren.Add, not AddChildren, because duplicates
+        are possible below, in case two animation frames are exactly equal.
+        See e.g. evil squirrel in https://github.com/castle-engine/wyrd-forest }
+      Switch.FdChildren.Add(WrapRootNode(BakedAnimation.Nodes[I] as TX3DRootNode));
+    Assert(Switch.FdChildren.Count = NodesCount);
+
     { we set whichChoice to 0 to see something before you run the animation }
     Switch.WhichChoice := 0;
     Group.AddChildren(Switch);

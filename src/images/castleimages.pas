@@ -1660,12 +1660,21 @@ type
     AlphaChannel: TAlphaChannel;
 
     { When generating to DDS (that has reverted row order with respect to OpenGL),
-      most of the compressed textures should flipped before.
+      most of the compressed textures should be stored as flipped.
       When reading, we except them to be already flipped.
-      The exceptions are DXT* formats, that are read correctly (unflipped)
+      When loading to OpenGL, they will effectively be flipped again
+      (since OpenGL expects bottom-to-top order, while we load it
+      image in top-to-bottom order), thus making the image correct.
+
+      The exceptions are DXT* formats, that we can read correctly (unflipped)
       from DDS.
 
-      This is only a limitation of the DDS format, irrelevant for future KTX. }
+      This is only a limitation of the DDS format.
+
+      For KTX, we can generate KTX images using PowerVR Texture Tools
+      that already have a correct (bottom-to-top) orientation.
+      So we can have textures compressed to PVRTC1_4bpp_RGB
+      with correct orientation. }
     DDSFlipped: boolean;
   end;
 
@@ -1715,11 +1724,16 @@ var
     the renderer (like OpenGL context). }
   SupportedTextureCompression: TTextureCompressions;
 
-{ All URLs loaded by LoadImage and LoadEncodedImage are processed
-  by this event. This allows to globally modify / observe your images paths,
+{ All image URLs are processed by this event before loading.
+  This allows to globally modify / observe your images paths,
   e.g. to use GPU compressed alternative versions.
 
-  This is automatically used by @link(TMaterialProperties MaterialProperties)
+  The URL processing is automatically used by
+  @link(LoadImage), @link(LoadEncodedImage),
+  @link(TCompositeImage.LoadFromFile).
+
+  The URL processing is automatically registered by
+  @link(TMaterialProperties MaterialProperties)
   to automatically use GPU compressed textures.
   See http://castle-engine.sourceforge.net/creating_data_material_properties.php .
   You can also use it yourself, instead or in addition
@@ -1763,6 +1777,10 @@ procedure AddLoadImageListener(const Event: TLoadImageEvent);
 
 { Remove listener added by @link(AddLoadImageListener). }
 procedure RemoveLoadImageListener(const Event: TLoadImageEvent);
+
+{ Process URL through events registered by @link(AddLoadImageListener).
+  This is used internally by the engine. }
+function ProcessImageUrl(const URL: string): string;
 
 {$undef read_interface}
 
@@ -4539,6 +4557,12 @@ end;
 procedure RemoveLoadImageListener(const Event: TLoadImageEvent);
 begin
   LoadImageEvents.Remove(Event);
+end;
+
+function ProcessImageUrl(const URL: string): string;
+begin
+  Result := URL;
+  LoadImageEvents.Execute(Result);
 end;
 
 { unit initialization / finalization ----------------------------------------- }

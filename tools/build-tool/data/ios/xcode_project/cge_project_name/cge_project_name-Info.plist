@@ -48,7 +48,7 @@
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
 	<key>CFBundleShortVersionString</key>
-	<string>${VERSION}</string>
+	<string>${IOS_VERSION}</string>
 	<key>CFBundleSignature</key>
 	<string>????</string>
 	<key>CFBundleVersion</key>
@@ -60,6 +60,7 @@
 	<key>UIRequiredDeviceCapabilities</key>
 	<array>
 		<string>armv7</string>
+${IOS_REQUIRED_DEVICE_CAPABILITIES}
 	</array>
 	<key>UIRequiresFullScreen</key>
 	<true/>
@@ -75,5 +76,6 @@ ${IOS_SCREEN_ORIENTATION}
 	<array>
 ${IOS_SCREEN_ORIENTATION}
 	</array>
+${IOS_EXTRA_INFO_PLIST}
 </dict>
 </plist>

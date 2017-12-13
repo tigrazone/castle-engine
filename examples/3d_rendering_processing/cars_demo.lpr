@@ -20,18 +20,18 @@
 }
 program cars_demo;
 
-uses SysUtils, CastleVectors, Castle3D, CastleUIControls, CastleUtils,
+uses SysUtils, CastleVectors, CastleTransform, CastleUIControls, CastleUtils,
   CastleFilesUtils, CastleWindow, CastleSceneCore, CastleScene,
   CastleKeysMouse, CastleBoxes, X3DNodes;
 
 var
   Window: TCastleWindow;
   CarScene, RoadScene: TCastleScene;
-  CarTransforms: array [1..20] of T3DTransform;
+  CarTransforms: array [1..20] of TCastleTransform;
 
 procedure WindowUpdate(Container: TUIContainer);
 
-  procedure UpdateCarTransform(const CarTransform: T3DTransform);
+  procedure UpdateCarTransform(const CarTransform: TCastleTransform);
   var
     T: TVector3;
   begin
@@ -88,6 +88,10 @@ begin
   Appearance := TAppearanceNode.Create;
   Appearance.Material := Material;
 
+  { Note: you could use TBoxNode.CreateWithTransform shortcut method
+    to create Box1, Shape1, Transform1 in one instruction.
+    But we show the longer version below, as it's easier to understand. }
+
   Box1 := TBoxNode.Create('box_1_geometry');
   Box1.Size := Vector3(0.5, WallHeight, RoadBox.Size.Z);
 
@@ -133,7 +137,7 @@ begin
 
   for I := Low(CarTransforms) to High(CarTransforms) do
   begin
-    CarTransforms[I] := T3DTransform.Create(Application);
+    CarTransforms[I] := TCastleTransform.Create(Application);
     CarTransforms[I].Translation := Vector3(
       -6 + Random(4) * 6, 0, RandomFloatRange(-70, 50));
     CarTransforms[I].Add(CarScene);

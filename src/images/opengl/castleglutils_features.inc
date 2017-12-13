@@ -25,6 +25,31 @@ const
   ( 'None', 'Extension', 'Standard' );
 
 type
+  { OpenGL memory information. }
+  TGLMemoryInfo = class
+  strict private
+    ExtensionNVidia, ExtensionATI: boolean;
+  public
+    { Total and current memory available, in Kb.
+      May be zero if unknown (only some NVidia GPUs support this). }
+    Total, Current: TGLint;
+
+    { Current memory free for a particular feature, in Kb.
+      May be zero if unknown (only some AMD GPUs support this). }
+    CurrentVbo, CurrentTexture, CurrentRenderbuffer: TGLint;
+
+    constructor Create;
+    procedure Refresh;
+
+    { Detect GPUs with low texture memory.
+      Looks at @link(Current) or @link(CurrentTexture), whichever is available.
+
+      This is useful to detect at runtime when to use e.g. compressed textures
+      (S3TC and such) or downscaled textures (using @link(GLTextureScale) or
+      @link(TextureLoadingScale)). }
+    function LessTextureMemoryThan(const RequiredMemoryKb: Integer): boolean;
+  end;
+
   { OpenGL features, analyzed based on OpenGL extensions and version.
     A single instance of this class is assigned to @link(GLFeatures)
     after the first OpenGL context was created.
@@ -197,7 +222,37 @@ type
     { Support for depth texture formats for glTexImage2d. }
     TextureDepth: boolean;
 
+    { GLSL shaders support. }
+    Shaders: TGLSupport;
+
+    { Enable OpenGL fixed-function rendering on desktops.
+
+      @unorderedList(
+        @item(This makes Gouraud-shaded shapes rendered using OpenGL
+          fixed-function pipeline on desktops.)
+        @item(It also makes TGLImage.Draw, DrawPrimitive2D (and consequently
+          most of the 2D user-interface) rendered using OpenGL fixed-function pipeline
+          on desktops.)
+        @item(It also allows you to use fixed-function pipeline calls in the
+          @link(TCastleWindowCustom.OnRender) callback, @link(TUIControl.Render)
+          override and related places.)
+        @item(It also allows some deprecated rendering features like WindowPos
+          to continue to work.)
+      )
+
+      This is @false by default on modern GPUs (that have good GLSL support).
+
+      On OpenGLES, it must be @false always, since OpenGLES >= 2
+      has no fixed-function pipeline.
+    }
+    EnableFixedFunction: boolean;
+
+    { Total and current memory available.
+      Call Memory.Refresh whenever needed. }
+    Memory: TGLMemoryInfo;
+
     constructor Create;
+    destructor Destroy; override;
   end;
 
 { Initialize GLVersion and GLUVersion and GLFeatures. }
@@ -298,11 +353,6 @@ begin
   ARB_shadow := Load_GL_ARB_shadow;
   EXT_fog_coord := Load_GL_EXT_fog_coord;
   NV_multisample_filter_hint := Load_GL_NV_multisample_filter_hint;
-
-  { We want to be able to render any scene --- so we have to be prepared
-    that fog interpolation has to be corrected for perspective.
-    TODO: this should be moved elsewhere, but where? }
-  glHint(GL_FOG_HINT, GL_NICEST);
   {$endif}
 
   {$ifdef OpenGLES}
@@ -515,6 +565,100 @@ begin
     {$ifdef OpenGLES} glext_ExtensionSupported('GL_OES_depth_texture', SupportedExtensions)
     {$else} Load_GL_ARB_depth_texture
     {$endif};
+
+  {$ifdef OpenGLES}
+  Shaders := gsStandard;
+  {$else}
+  if Version_2_0 then
+    Shaders := gsStandard else
+  {$ifndef ForceStandardGLSLApi}
+  if Load_GL_ARB_shader_objects and
+     Load_GL_ARB_vertex_shader and
+     Load_GL_ARB_fragment_shader and
+     Load_GL_ARB_shading_language_100 then
+    Shaders := gsExtension else
+  {$endif not ForceStandardGLSLApi}
+    Shaders := gsNone;
+  {$endif}
+
+  EnableFixedFunction :=
+    {$ifdef OpenGLES} false
+    {$else} Shaders <> gsStandard
+    {$endif};
+
+  // set GLFeatures singleton, TGLMemoryInfo.Refresh depends on it
+  GLFeatures := Self;
+
+  Memory := TGLMemoryInfo.Create;
+end;
+
+destructor TGLFeatures.Destroy;
+begin
+  FreeAndNil(Memory);
+end;
+
+{ TGLMemoryInfo -------------------------------------------------------------- }
+
+constructor TGLMemoryInfo.Create;
+var
+  SupportedExtensions: string;
+begin
+  inherited;
+  SupportedExtensions := PChar(glGetString(GL_EXTENSIONS));
+  ExtensionNVidia := glext_ExtensionSupported('GL_NVX_gpu_memory_info', SupportedExtensions);
+  ExtensionATI := glext_ExtensionSupported('GL_ATI_meminfo', SupportedExtensions);
+  Refresh;
+end;
+
+procedure TGLMemoryInfo.Refresh;
+const
+  GL_GPU_MEM_INFO_TOTAL_AVAILABLE_MEM_NVX   = $9048;
+  GL_GPU_MEM_INFO_CURRENT_AVAILABLE_MEM_NVX = $9049;
+  GL_VBO_FREE_MEMORY_ATI          = $87FB;
+  GL_TEXTURE_FREE_MEMORY_ATI      = $87FC;
+  GL_RENDERBUFFER_FREE_MEMORY_ATI = $87FD;
+var
+  FreeMemory: TVector4Integer;
+begin
+  // see http://nasutechtips.blogspot.com/2011/02/how-to-get-gpu-memory-size-and-usage-in.html
+
+  // http://developer.download.nvidia.com/opengl/specs/GL_NVX_gpu_memory_info.txt
+  if ExtensionNVidia then
+  begin
+    glGetIntegerv(GL_GPU_MEM_INFO_TOTAL_AVAILABLE_MEM_NVX, @Total);
+    glGetIntegerv(GL_GPU_MEM_INFO_CURRENT_AVAILABLE_MEM_NVX, @Current);
+  end;
+
+  // https://www.khronos.org/registry/OpenGL/extensions/ATI/ATI_meminfo.txt
+  if ExtensionATI then
+  begin
+    if GLFeatures.VertexBufferObject then
+    begin
+      glGetIntegerv(GL_VBO_FREE_MEMORY_ATI, @FreeMemory);
+      CurrentVbo := FreeMemory[0];
+    end;
+
+    glGetIntegerv(GL_TEXTURE_FREE_MEMORY_ATI, @FreeMemory);
+    CurrentTexture := FreeMemory[0];
+
+    if GLFeatures.Framebuffer <> gsNone then
+    begin
+      glGetIntegerv(GL_RENDERBUFFER_FREE_MEMORY_ATI, @FreeMemory);
+      CurrentRenderbuffer := FreeMemory[0];
+    end;
+  end;
+end;
+
+function TGLMemoryInfo.LessTextureMemoryThan(const RequiredMemoryKb: Integer): boolean;
+begin
+  if Current <> 0 then
+    Result := Current < RequiredMemoryKb
+  else
+  if CurrentTexture <> 0 then
+    Result := CurrentTexture < RequiredMemoryKb
+  else
+    // unknown memory, assume old GPU with low memory
+    Result := true;
 end;
 
 {$endif read_implementation}

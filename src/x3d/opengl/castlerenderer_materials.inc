@@ -54,20 +54,23 @@ procedure RenderMaterialsBegin;
       Shader.MaterialUnlit := Vector4(DiffuseColor, MaterialOpacity) else
       Shader.MaterialUnlit := Vector4(UnLitColor, MaterialOpacity);
 
-    {$ifndef OpenGLES}
-    if Lighting then
+    if GLFeatures.EnableFixedFunction then
     begin
-      glMaterialv(GL_FRONT_AND_BACK, GL_AMBIENT, Shader.MaterialAmbient);
-      glMaterialv(GL_FRONT_AND_BACK, GL_DIFFUSE, Shader.MaterialDiffuse);
-      glMaterialv(GL_FRONT_AND_BACK, GL_SPECULAR, Shader.MaterialSpecular);
-      glMaterialv(GL_FRONT_AND_BACK, GL_EMISSION, Shader.MaterialEmission);
-      glMaterialf(GL_FRONT_AND_BACK, GL_SHININESS, Shader.MaterialShininessExp);
+      {$ifndef OpenGLES}
+      if Lighting then
+      begin
+        glMaterialv(GL_FRONT_AND_BACK, GL_AMBIENT, Shader.MaterialAmbient);
+        glMaterialv(GL_FRONT_AND_BACK, GL_DIFFUSE, Shader.MaterialDiffuse);
+        glMaterialv(GL_FRONT_AND_BACK, GL_SPECULAR, Shader.MaterialSpecular);
+        glMaterialv(GL_FRONT_AND_BACK, GL_EMISSION, Shader.MaterialEmission);
+        glMaterialf(GL_FRONT_AND_BACK, GL_SHININESS, Shader.MaterialShininessExp);
 
-      { If Lighting, we know that GL_LIGHTING is enabled
-        (for fixed-function, or shader). So no point in setting glColor. }
-    end else
-      glColorv(Shader.MaterialUnlit);
-    {$endif}
+        { If Lighting, we know that GL_LIGHTING is enabled
+          (for fixed-function, or shader). So no point in setting glColor. }
+      end else
+        glColorv(Shader.MaterialUnlit);
+      {$endif}
+    end;
   end;
 
   { Sets current OpenGL material and color properties for VRML 1.0 material
@@ -144,7 +147,9 @@ procedure RenderMaterialsBegin;
         { Colors for lighting don't matter here }
         WhiteRGB, WhiteRGB, WhiteRGB, WhiteRGB,
         { From VRML 2.0 spec about Appearance node: when no Material is
-          specified, object is unlit and unlit object color is (1, 1, 1). }
+          specified, object is unlit and unlit object color is (1, 1, 1).
+          X3D spec also hints (at Material node) that
+          Material = NULL makes "unlit white color".  }
         WhiteRGB,
         { shininess } 0, { opacity } 1);
     end;

@@ -77,12 +77,17 @@
     property Enabled: boolean read GetEnabled write SetEnabled;
     property FiniteRotationAxis: TVector3 read GetFiniteRotationAxis write SetFiniteRotationAxis;
     property Fixed: boolean read GetFixed write SetFixed;
+    procedure SetForces(const Value: array of TVector3);
+    procedure SetForces(const Value: TVector3List);
+    procedure SetGeometry(const Value: array of TAbstractNBodyCollidableNode);
     property Inertia: TMatrix3 read GetInertia write SetInertia;
     property LinearDampingFactor: Single read GetLinearDampingFactor write SetLinearDampingFactor;
     property LinearVelocity: TVector3 read GetLinearVelocity write SetLinearVelocity;
     property Mass: Single read GetMass write SetMass;
     property Orientation: TVector4 read GetOrientation write SetOrientation;
     property Position: TVector3 read GetPosition write SetPosition;
+    procedure SetTorques(const Value: array of TVector3);
+    procedure SetTorques(const Value: TVector3List);
     property UseFiniteRotation: boolean read GetUseFiniteRotation write SetUseFiniteRotation;
     property UseGlobalGravity: boolean read GetUseGlobalGravity write SetUseGlobalGravity;
 
@@ -202,6 +207,28 @@ begin
   FdFixed.Send(Value);
 end;
 
+procedure TRigidBodyNode.SetForces(const Value: array of TVector3);
+begin
+  FdForces.Send(Value);
+end;
+
+procedure TRigidBodyNode.SetForces(const Value: TVector3List);
+begin
+  FdForces.Send(Value);
+end;
+
+procedure TRigidBodyNode.SetGeometry(const Value: array of TAbstractNBodyCollidableNode);
+var
+  L: Integer;
+  A: array of TX3DNode;
+begin
+  L := High(Value) + 1;
+  SetLength(A, L);
+  if L > 0 then
+    Move(Value[0], A[0], L * SizeOf(TAbstractNBodyCollidableNode));
+  FdGeometry.Send(A);
+end;
+
 function TRigidBodyNode.GetInertia: TMatrix3;
 begin
   Result := FdInertia.Value;
@@ -260,6 +287,16 @@ end;
 procedure TRigidBodyNode.SetPosition(const Value: TVector3);
 begin
   FdPosition.Send(Value);
+end;
+
+procedure TRigidBodyNode.SetTorques(const Value: array of TVector3);
+begin
+  FdTorques.Send(Value);
+end;
+
+procedure TRigidBodyNode.SetTorques(const Value: TVector3List);
+begin
+  FdTorques.Send(Value);
 end;
 
 function TRigidBodyNode.GetUseFiniteRotation: boolean;

@@ -1756,7 +1756,7 @@ type
       We consciously decided to not implement anything more involved here.
       If you need really flexible timer mechanism, do not use this.
       Instead use @link(OnUpdate)
-      (or TUIControl.Update, or T3D.Update) and look at it's @code(SecondsPassed)
+      (or TUIControl.Update, or TCastleTransform.Update) and look at it's @code(SecondsPassed)
       value to perform actions (one time or repeated) with a specified delay.
       The engine source is full of examples of this.
 
@@ -2554,6 +2554,11 @@ type
     VideoResizeheight : integer;
     { @groupEnd }
 
+    { Initialized to @true on touch devices (Android, iOS).
+      You can change this to easily pretend that you have a touch device
+      on desktop. }
+    TouchDevice: boolean;
+
     procedure Notification(AComponent: TComponent; Operation: TOperation); override;
 
     { Color bits per pixel that will be set by next VideoChange call,
@@ -3013,6 +3018,7 @@ begin
   OwnsMainMenu := true;
   FDpi := DefaultDpi;
   FPressed := TKeysPressed.Create;
+  FMousePosition := Vector2(-1, -1);
   FFps := TFramesPerSecond.Create;
   FMainMenuVisible := true;
   FContainer := CreateContainer;
@@ -4485,7 +4491,8 @@ begin
   SceneManager.MainScene.Free;
   SceneManager.MainScene := nil;
   SceneManager.Items.Clear;
-  SceneManager.Camera.Free;
+  SceneManager.ClearCameras;
+  Assert(SceneManager.Camera = nil);
 
   SceneManager.MainScene := TCastleScene.Create(Self);
   SceneManager.MainScene.Load(ARootNode, OwnsRootNode);
@@ -4496,7 +4503,7 @@ begin
   MainScene.ShapeOctreeProgressTitle := 'Building shape octree';
 
   { just to make our Camera always non-nil }
-  SceneManager.Camera := SceneManager.CreateDefaultCamera;
+  SceneManager.RequiredCamera;
 end;
 
 function TCastleWindow.MainScene: TCastleScene;
@@ -4526,19 +4533,13 @@ end;
 
 function TCastleWindow.GetNavigationType: TNavigationType;
 begin
-  if SceneManager.Camera <> nil then
-    Result := SceneManager.Camera.GetNavigationType else
-    Result := ntNone;
+  Result := SceneManager.NavigationType;
 end;
 
 procedure TCastleWindow.SetNavigationType(const Value: TNavigationType);
 begin
-  if (SceneManager.Camera <> nil) and
-     (SceneManager.Camera is TUniversalCamera) then
-  begin
-    (SceneManager.Camera as TUniversalCamera).NavigationType := Value;
-    NavigationInfoChanged;
-  end;
+  SceneManager.NavigationType := Value;
+  NavigationInfoChanged;
 end;
 
 { TWindowList ------------------------------------------------------------ }
@@ -4578,7 +4579,10 @@ begin
   FTimerMilisec := 1000;
   FLimitFPS := DefaultLimitFPS;
   FDefaultWindowClass := TCastleWindowCustom;
-
+  TouchDevice :=
+    {$ifdef ANDROID} true {$else}
+    {$ifdef IOS}     true {$else}
+                     false {$endif} {$endif};
   CreateBackend;
 end;
 

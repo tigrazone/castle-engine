@@ -86,11 +86,11 @@
     procedure SetCapacity(const Value: SizeInt);
     property Capacity: SizeInt read GetCapacity write SetCapacity;
   public
-    constructor Create(AParentNode: TX3DFileItem;
-      const AName: string;
+    constructor Create(const AParentNode: TX3DFileItem;
+      const AExposed: boolean; const AName: string;
       const InitialContent: array of TItem);
-    constructor CreateUndefined(AParentNode: TX3DFileItem;
-      const AName: string; const AExposed: boolean); override;
+    constructor CreateUndefined(const AParentNode: TX3DFileItem;
+      const AExposed: boolean; const AName: string); override;
     destructor Destroy; override;
 
     property Items: TItemList read GetItems write SetItems;
@@ -121,7 +121,10 @@
 
     class function CreateEvent(const AParentNode: TX3DFileItem; const AName: string; const AInEvent: boolean): TX3DEvent; override;
 
-    procedure Send(const AValue: array of TItem); virtual; overload;
+    { Set the field's value in a correct way (by sending X3D event, or at least notifying
+      the parent scene). }
+    procedure Send(const AValue: array of TItem); overload;
+    procedure Send(const AValue: TItemList); overload;
   end;
 
 {$endif read_interface}
@@ -132,7 +135,7 @@
 
 function TX3DSimpleMultField.CreateItemBeforeParse: TSingleField;
 begin
-  result := TSingleField.CreateUndefined(ParentNode, '', false);
+  result := TSingleField.CreateUndefined(ParentNode, false, '');
 end;
 
 procedure TX3DSimpleMultField.ParseValue(Lexer: TX3DLexer; Reader: TX3DReader);
@@ -309,18 +312,19 @@ begin
   end;
 end;
 
-constructor TX3DSimpleMultField.CreateUndefined(AParentNode: TX3DFileItem;
-  const AName: string; const AExposed: boolean);
+constructor TX3DSimpleMultField.CreateUndefined(const AParentNode: TX3DFileItem;
+  const AExposed: boolean; const AName: string);
 begin
   inherited;
   FItems := TItemList.Create;
   DefaultValuesCount := -1;
 end;
 
-constructor TX3DSimpleMultField.Create(AParentNode: TX3DFileItem; const AName: string;
+constructor TX3DSimpleMultField.Create(
+  const AParentNode: TX3DFileItem; const AExposed: boolean; const AName: string;
   const InitialContent: array of TItem);
 begin
-  inherited Create(AParentNode, AName);
+  inherited Create(AParentNode, AExposed, AName);
   Items.AddRange(InitialContent);
   AssignDefaultValueFromValue;
 end;
@@ -448,18 +452,51 @@ procedure TX3DSimpleMultField.Send(const AValue: array of TItem);
 var
   FieldValue: TX3DSimpleMultField;
 begin
-  { We want to create an instance of ClassType (actual current class type),
-    not just an instance of TX3DSimpleMultField<T> (which is only an ancestor
-    of other MF field classes). }
-  // This works in FPC (Delphi and ObjFpc mode), but doesn't in actual Delphi:
-  // FieldValue := TX3DFieldClass(ClassType).Create(ParentNode, X3DName, AValue);
+  if SendsByEvent then
+  begin
+    { We want to create an instance of ClassType (actual current class type),
+      not just an instance of TX3DSimpleMultField<T> (which is only an ancestor
+      of other MF field classes). }
+    // This works in FPC (Delphi and ObjFpc mode), but doesn't in actual Delphi:
+    // FieldValue := TX3DFieldClass(ClassType).Create(ParentNode, false, X3DName, AValue);
 
-  FieldValue := TX3DSimpleMultField(
-    TX3DFieldClass(ClassType).CreateUndefined(ParentNode, X3DName, true));
-  try
-    FieldValue.Items.AddRange(AValue);
-    Send(FieldValue);
-  finally FreeAndNil(FieldValue) end;
+    { AExposed = false below, because not needed otherwise. }
+    FieldValue := TX3DSimpleMultField(
+      TX3DFieldClass(ClassType).CreateUndefined(ParentNode, false, X3DName));
+    try
+      FieldValue.Items.AddRange(AValue);
+      Send(FieldValue);
+    finally FreeAndNil(FieldValue) end;
+  end else
+  begin
+    { When SendsByEvent = false, we can optimize this method.
+      No need to create an intermediate FieldValue instance
+      (and assign AValue to FieldValue, just to later assign FieldValue to Items). }
+    ValueFromIsClause := false;
+    Items.Assign(AValue);
+    Changed;
+  end;
+end;
+
+procedure TX3DSimpleMultField.Send(const AValue: TItemList);
+var
+  FieldValue: TX3DSimpleMultField;
+begin
+  { This is a copy-paste of implementation of Send(const AValue: array of TItem) }
+  if SendsByEvent then
+  begin
+    FieldValue := TX3DSimpleMultField(
+      TX3DFieldClass(ClassType).CreateUndefined(ParentNode, false, X3DName));
+    try
+      FieldValue.Items.AddRange(AValue);
+      Send(FieldValue);
+    finally FreeAndNil(FieldValue) end;
+  end else
+  begin
+    ValueFromIsClause := false;
+    Items.Assign(AValue);
+    Changed;
+  end;
 end;
 
 {$endif read_implementation}

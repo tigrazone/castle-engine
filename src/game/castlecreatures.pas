@@ -23,9 +23,9 @@ interface
 uses Classes, Generics.Collections,
   CastleVectors, CastleBoxes, CastleClassUtils,
   CastleUtils, CastleScene, CastleSectors, CastleStringUtils,
-  CastleResources, CastleXMLConfig, Castle3D,
+  CastleResources, CastleXMLConfig, CastleTransform, Castle3D,
   CastleSoundEngine, CastleFrustum, X3DNodes, CastleColors,
-  CastleDebug3D;
+  CastleDebugTransform;
 
 type
   TCreatureState = type Integer;
@@ -76,6 +76,7 @@ type
     FDefaultMaxLife: Single;
     FKnockBackDistance: Single;
     FKnockBackSpeed: Single;
+    FCollidesWhenDead: boolean;
 
     FRadiusOverride: Single;
 
@@ -184,15 +185,15 @@ type
       as initial TCreature.Direction value.
 
       @groupBegin }
-    function CreateCreature(World: T3DWorld;
+    function CreateCreature(World: TSceneManagerWorld;
       const APosition, ADirection: TVector3;
       const MaxLife: Single): TCreature; virtual; overload;
-    function CreateCreature(World: T3DWorld;
+    function CreateCreature(World: TSceneManagerWorld;
       const APosition, ADirection: TVector3): TCreature; overload;
     { @groupEnd }
 
     { Instantiate creature placeholder, by calling CreateCreature. }
-    procedure InstantiatePlaceholder(World: T3DWorld;
+    procedure InstantiatePlaceholder(World: TSceneManagerWorld;
       const APosition, ADirection: TVector3;
       const NumberPresent: boolean; const Number: Int64); override;
 
@@ -218,10 +219,14 @@ type
       read FKnockBackDistance write FKnockBackDistance
       default DefaultKnockBackDistance;
 
-    { See T3DAlive.KnockBackSpeed. }
+    { See TAlive.KnockBackSpeed. }
     property KnockBackSpeed: Single
       read FKnockBackSpeed write FKnockBackSpeed
-      default T3DAlive.DefaultKnockBackSpeed;
+      default TAlive.DefaultKnockBackSpeed;
+
+    { By default dead creatures (corpses) don't collide, this usually looks better. }
+    property CollidesWhenDead: boolean
+      read FCollidesWhenDead write FCollidesWhenDead default false;
 
     { Default attack damage and knockback.
       Used only by the creatures that actually do some kind of direct attack.
@@ -244,9 +249,9 @@ type
 
     { Height of the eyes of the creature,
       used for various collision detection routines.
-      See T3DCustomTransform.MiddleHeight for a precise documentation.
+      See TCastleTransform.MiddleHeight for a precise documentation.
 
-      Game developers can use the RenderDebug3D variable to easily
+      Game developers can use the RenderDebug variable to easily
       visualize the bounding sphere (and other things) around resources.
       The bounding sphere is centered around the point derived from MiddleHeight
       setting and with given creature radius
@@ -254,7 +259,7 @@ type
       @link(TCreatureResource.RadiusCalculate)). }
     property MiddleHeight: Single
       read FMiddleHeight write FMiddleHeight
-      default T3DCustomTransform.DefaultMiddleHeight;
+      default TCastleTransform.DefaultMiddleHeight;
 
     property FallMinHeightToSound: Single
       read FFallMinHeightToSound write FFallMinHeightToSound default DefaultCreatureFallMinHeightToSound;
@@ -287,14 +292,23 @@ type
       then we use automatically calculated radius using RadiusCalculate,
       that is adjusted to the bounding box of the animation.
 
-      Note that this radius is not used at all when creature is dead,
-      as dead creatures usually have wildly
-      different boxes (tall humanoid creature probably has a flat bounding
-      box when it's dead lying on the ground), so trying to use (the same)
-      radius would only cause problems.
-      Using sphere collision is also not necessary for dead creatures.
-      See T3D.Sphere for more discussion about when the sphere is a useful
-      bounding volume.
+      This radius is used only for alive creatures, because:
+
+      @unorderedList(
+        @item(It would cause incorrect results on many dead creatures.
+          Dead creatures usually have very different boxes than alive
+          (tall alive humanoid creature probably has a small flat bounding
+          box when it's lying dead on the ground). So the same radius would not work
+          nicely.)
+
+        @item(It is not necessary to use sphere bounding volumes for dead creatures.
+          The main advantage of sphere bounding volumes (over box bounding volumes)
+          is for moving (alive) creatures:
+          sphere better avoids getting stuck into obstacles (because an animation
+          can change the bounding box at any moment).)
+
+        @item(Actually, the results look best when dead creatures don't collide at all.)
+      )
 
       The sphere center is the Middle point ("eye position") of the given creature.
       If the creature may be affected by gravity then
@@ -491,7 +505,7 @@ type
     { Maximum distance between enemy and creature to allow creature
       to start attack. The distance is measured between
       enemy (see TWalkAttackCreature.Enemy) and current creature
-      Middle (see T3D.Middle) points. }
+      Middle (see @link(TCastleTransform.Middle)) points. }
     property AttackMaxDistance: Single
       read FAttackMaxDistance write FAttackMaxDistance
       default DefaultAttackMaxDistance;
@@ -509,7 +523,7 @@ type
       they can attack enemy only when they are facing the enemy.
 
       More precisely, the attack is allowed to start only when
-      the angle between current creature @link(T3DOrient.Direction Direction)
+      the angle between current creature @link(TCastleTransform.Direction Direction)
       and the vector from creature's Middle to the enemy's Middle (see T3D.Middle)
       is <= AttackMaxAngle.
 
@@ -667,7 +681,7 @@ type
     constructor Create(const AName: string); override;
     function CreatureClass: TCreatureClass; override;
     procedure LoadFromFile(ResourceConfig: TCastleConfig); override;
-    function CreateCreature(World: T3DWorld;
+    function CreateCreature(World: TSceneManagerWorld;
       const APosition, ADirection: TVector3;
       const MaxLife: Single): TCreature; override;
 
@@ -763,9 +777,10 @@ type
   end;
 
   { Base creature, using any TCreatureResource. }
-  TCreature = class(T3DAlive)
+  TCreature = class(TAlive)
   private
     FResource: TCreatureResource;
+    FResourceFrame: TResourceFrame;
 
     UsedSounds: TSoundList;
     FSoundDieEnabled: boolean;
@@ -776,7 +791,7 @@ type
     FDebugCaptionsText: TTextNode;
     FDebugCaptionsFontStyle: TFontStyleNode;
 
-    FDebug3D: TDebug3D;
+    FDebugTransform: TDebugTransform;
 
     { Calculated @link(Radius) suitable for this creature.
       This is cached result of @link(TCreatureResource.Radius). }
@@ -787,23 +802,23 @@ type
     procedure SetLife(const Value: Single); override;
     procedure Fall(const FallHeight: Single); override;
 
-    { Current scene to be rendered.
-      Note that this may be called before we're added to World (at the end of our
-      construction), so make it work always reliably. }
-    { function GetChild: T3D; override; }
-
     { LerpLegsMiddle interpolates between Position and Middle
       (intuitively, legs and eye positions). }
     function LerpLegsMiddle(const A: Single): TVector3;
 
     { Hurt given enemy. HurtEnemy may be @nil, in this case we do nothing. }
-    procedure AttackHurt(const HurtEnemy: T3DAlive);
+    procedure AttackHurt(const HurtEnemy: TAlive);
 
     procedure UpdateDebugCaption(const Lines: TCastleStringList); virtual;
   public
+    class var
+      { Render debug bounding boxes and captions at every creature. }
+      RenderDebug: boolean;
+
     constructor Create(AOwner: TComponent; const AMaxLife: Single); virtual; reintroduce;
     destructor Destroy; override;
     function GetExists: boolean; override;
+    function GetCollides: boolean; override;
 
     property Resource: TCreatureResource read FResource;
 
@@ -886,8 +901,8 @@ type
     WaypointsSaved: TWaypointList;
     MiddleForceBoxTime: Single;
 
-    FDebug3DAlternativeTargetAxis: TDebugAxis;
-    FDebug3DLastSensedEnemyAxis: TDebugAxis;
+    FDebugAlternativeTargetAxis: TDebugAxis;
+    FDebugLastSensedEnemyAxis: TDebugAxis;
   protected
     { Last known information about enemy. }
     HasLastSensedEnemy: boolean;
@@ -901,12 +916,10 @@ type
     { Enemy of this creature. In this class, this always returns global
       World.Player (if it exists and is still alive).
       Return @nil for no enemy. }
-    function Enemy: T3DAlive; virtual;
+    function Enemy: TAlive; virtual;
 
     { Last State change time, taken from LifeTime. }
     property StateChangeTime: Single read FStateChangeTime;
-
-    function GetChild: T3D; override;
 
     { Actually do the attack indicated by AttackAnimation
       and AttackTime and other AttackXxx properties.
@@ -944,7 +957,7 @@ type
     procedure Update(const SecondsPassed: Single; var RemoveMe: TRemoveType); override;
 
     procedure Hurt(const LifeLoss: Single; const HurtDirection: TVector3;
-      const AKnockbackDistance: Single; const Attacker: T3DAlive); override;
+      const AKnockbackDistance: Single; const Attacker: TAlive); override;
   end;
 
   { Creature using TMissileCreatureResource. }
@@ -955,8 +968,6 @@ type
     procedure HitCore;
     procedure HitPlayer;
     procedure HitCreature(Creature: TCreature);
-  protected
-    function GetChild: T3D; override;
   public
     constructor Create(AOwner: TComponent; const AMaxLife: Single); override;
     function Resource: TMissileCreatureResource;
@@ -965,8 +976,6 @@ type
 
   { Creature using TStillCreatureResource. }
   TStillCreature = class(TCreature)
-  protected
-    function GetChild: T3D; override;
   public
     function Resource: TStillCreatureResource;
     procedure Update(const SecondsPassed: Single; var RemoveMe: TRemoveType); override;
@@ -997,12 +1006,12 @@ begin
   FFlying := DefaultFlying;
   FDefaultMaxLife := DefaultDefaultMaxLife;
   FKnockBackDistance := DefaultKnockBackDistance;
-  FKnockBackSpeed := T3DAlive.DefaultKnockBackSpeed;
+  FKnockBackSpeed := TAlive.DefaultKnockBackSpeed;
   FSoundDieTiedToCreature := DefaultSoundDieTiedToCreature;
   FAttackDamageConst := DefaultAttackDamageConst;
   FAttackDamageRandom := DefaultAttackDamageRandom;
   FAttackKnockbackDistance := DefaultAttackKnockbackDistance;
-  FMiddleHeight := T3DCustomTransform.DefaultMiddleHeight;
+  FMiddleHeight := TCastleTransform.DefaultMiddleHeight;
   FFallMinHeightToSound := DefaultCreatureFallMinHeightToSound;
   FFallMinHeightToDamage := DefaultFallMinHeightToDamage;
   FFallDamageScaleMin := DefaultFallDamageScaleMin;
@@ -1015,7 +1024,8 @@ begin
   inherited;
 
   KnockBackSpeed := ResourceConfig.GetFloat('knockback_speed',
-    T3DAlive.DefaultKnockBackSpeed);
+    TAlive.DefaultKnockBackSpeed);
+  CollidesWhenDead := ResourceConfig.GetValue('collides_when_dead', false);
   KnockBackDistance := ResourceConfig.GetFloat('knockback_distance',
     DefaultKnockBackDistance);
   Flying := ResourceConfig.GetValue('flying',
@@ -1031,7 +1041,7 @@ begin
     DefaultAttackDamageRandom);
   AttackKnockbackDistance := ResourceConfig.GetFloat('attack/knockback_distance',
     DefaultAttackKnockbackDistance);
-  MiddleHeight := ResourceConfig.GetFloat('middle_height', T3DCustomTransform.DefaultMiddleHeight);
+  MiddleHeight := ResourceConfig.GetFloat('middle_height', TCastleTransform.DefaultMiddleHeight);
   FallMinHeightToSound := ResourceConfig.GetFloat('fall/sound/min_height', DefaultCreatureFallMinHeightToSound);
   FallMinHeightToDamage := ResourceConfig.GetFloat('fall/damage/min_height', DefaultFallMinHeightToDamage);
   FallDamageScaleMin := ResourceConfig.GetFloat('fall/damage/scale_min', DefaultFallDamageScaleMin);
@@ -1050,7 +1060,7 @@ begin
   Result := true;
 end;
 
-function TCreatureResource.CreateCreature(World: T3DWorld;
+function TCreatureResource.CreateCreature(World: TSceneManagerWorld;
   const APosition, ADirection: TVector3;
   const MaxLife: Single): TCreature;
 begin
@@ -1063,7 +1073,7 @@ begin
     For example, on missiles like thrown web we do Sound3d that uses LerpLegsMiddle.
     Also TCreature.Idle (which definitely needs Resource) may get called before
     PrepareResource. IOW, PrepareResource is just too late. }
-  Prepare(World.BaseLights);
+  Prepare(World.PrepareParams);
 
   Result := CreatureClass.Create(World { owner }, MaxLife);
   { set properties that in practice must have other-than-default values
@@ -1081,13 +1091,13 @@ begin
   World.Add(Result);
 end;
 
-function TCreatureResource.CreateCreature(World: T3DWorld;
+function TCreatureResource.CreateCreature(World: TSceneManagerWorld;
   const APosition, ADirection: TVector3): TCreature;
 begin
   Result := CreateCreature(World, APosition, ADirection, DefaultMaxLife);
 end;
 
-procedure TCreatureResource.InstantiatePlaceholder(World: T3DWorld;
+procedure TCreatureResource.InstantiatePlaceholder(World: TSceneManagerWorld;
   const APosition, ADirection: TVector3;
   const NumberPresent: boolean; const Number: Int64);
 var
@@ -1127,7 +1137,7 @@ begin
     So it's Ok to make here some assumptions that should suit usual cases,
     but not necessarily all possible cases ---
     e.g. our MaxRadiusForGravity calculation assumes you
-    let default T3DCustomTransform.PreferredHeight algorithm to work. }
+    let default TCastleTransform.PreferredHeight algorithm to work. }
 
   if Animations.Count = 0 then
     Box := TBox3D.Empty
@@ -1282,7 +1292,7 @@ begin
     ResourceConfig.GetValue('sound_idle', ''));
 end;
 
-function TMissileCreatureResource.CreateCreature(World: T3DWorld;
+function TMissileCreatureResource.CreateCreature(World: TSceneManagerWorld;
   const APosition, ADirection: TVector3;
   const MaxLife: Single): TCreature;
 begin
@@ -1295,7 +1305,7 @@ begin
        but they keep pointing upwards. This is noticeable to the player
        that looks at the arrow.
     2. It also conflicts with current hack with "MaximumFallingDistance -= 0.01"
-       inside Castle3D gravity. It could probably be fixed better,
+       inside CastleTransform gravity. It could probably be fixed better,
        but since the 1st problem would remain anyway...
     Also growing up doesn't make any sense for missile that explodes on contact
     with ground. So Fall should be overriden to make HitCore,
@@ -1303,7 +1313,7 @@ begin
 
     We also want to turn off Gravity to use Gravity=false case when using
     MiddleHeight, so MiddleHeight is always between bounding box bottom and top
-    for missiles. See T3DCustomTransform.MiddleHeight. }
+    for missiles. See TCastleTransform.MiddleHeight. }
 
   Result.Gravity := false;
 end;
@@ -1363,14 +1373,23 @@ begin
   FSoundDieEnabled := true;
   UsedSounds := TSoundList.Create(false);
 
-  FDebug3D := TDebug3D.Create(Self);
-  FDebug3D.Attach(Self);
+  FDebugTransform := TDebugTransform.Create(Self);
+  FDebugTransform.Attach(Self);
+
+  FResourceFrame := TResourceFrame.Create(Self);
+  Add(FResourceFrame);
 end;
 
 function TCreature.GetExists: boolean;
 begin
   Result := (inherited GetExists) and (DisableCreatures = 0) and
     ((not Assigned(OnCreatureExists)) or OnCreatureExists(Self));
+end;
+
+function TCreature.GetCollides: boolean;
+begin
+  Result := (inherited GetCollides) and
+    (Resource.CollidesWhenDead or (not Dead));
 end;
 
 destructor TCreature.Destroy;
@@ -1424,7 +1443,7 @@ end;
 
 function TCreature.LerpLegsMiddle(const A: Single): TVector3;
 begin
-  Result := Lerp(A, Position, Middle);
+  Result := Lerp(A, Translation, Middle);
 end;
 
 procedure TCreature.UpdateDebugCaption(const Lines: TCastleStringList);
@@ -1469,7 +1488,7 @@ procedure TCreature.Update(const SecondsPassed: Single; var RemoveMe: TRemoveTyp
     H: Single;
     BBox: TBox3D;
   begin
-    if RenderDebugCaptions and (FDebugCaptions = nil) then
+    if RenderDebug and (FDebugCaptions = nil) then
     begin
       { create FDebugCaptions on demand }
 
@@ -1500,14 +1519,11 @@ procedure TCreature.Update(const SecondsPassed: Single; var RemoveMe: TRemoveTyp
     end;
 
     if FDebugCaptions <> nil then
-      FDebugCaptions.Exists := RenderDebugCaptions;
+      FDebugCaptions.Exists := RenderDebug;
 
-    if RenderDebugCaptions then
+    if RenderDebug then
     begin
-      if GetChild <> nil then
-        BBox := GetChild.BoundingBox
-      else
-        BBox := TBox3D.Empty;
+      BBox := BoundingBox;
       FDebugCaptionsShape.Render := not BBox.IsEmpty;
       if FDebugCaptionsShape.Render then
       begin
@@ -1516,11 +1532,12 @@ procedure TCreature.Update(const SecondsPassed: Single; var RemoveMe: TRemoveTyp
         FDebugCaptionsTransform.Matrix := TransformToCoordsMatrix(
           { move the caption to be at the top }
           World.GravityUp * H,
-          { By default, Text is in XY plane.
-            Adjust it to our Orientation. }
-          TVector3.CrossProduct(UpFromOrientation[Orientation], DirectionFromOrientation[Orientation]),
-          UpFromOrientation[Orientation],
-          DirectionFromOrientation[Orientation]);
+          { By default, Text is in XY plane. Adjust it to our Orientation. }
+          TVector3.CrossProduct(
+            TCastleTransform.DefaultUp[Orientation],
+            TCastleTransform.DefaultDirection[Orientation]),
+          TCastleTransform.DefaultUp[Orientation],
+          TCastleTransform.DefaultDirection[Orientation]);
 
         FDebugCaptionsText.FdString.Items.Clear;
         UpdateDebugCaption(FDebugCaptionsText.FdString.Items);
@@ -1534,14 +1551,14 @@ begin
   if not GetExists then Exit;
 
   { In this case (when GetExists, regardless of DebugTimeStopForCreatures),
-    T3DAlive.Update changed LifeTime.
+    TAlive.Update changed LifeTime.
     And LifeTime is used to choose animation frame in GetChild.
     So the creature constantly changes, even when it's
-    transformation (things taken into account in T3DOrient) stay equal. }
+    transformation (things taken into account in TCastleTransform) stay equal. }
   VisibleChangeHere([vcVisibleGeometry]);
 
   UpdateUsedSounds;
-  FDebug3D.Exists := RenderDebug3D;
+  FDebugTransform.Exists := RenderDebug;
   UpdateDebugCaptions;
 end;
 
@@ -1561,7 +1578,7 @@ begin
   inherited;
 end;
 
-procedure TCreature.AttackHurt(const HurtEnemy: T3DAlive);
+procedure TCreature.AttackHurt(const HurtEnemy: TAlive);
 begin
   if HurtEnemy <> nil then
     HurtEnemy.Hurt(Resource.AttackDamageConst +
@@ -1619,9 +1636,9 @@ begin
   Result := TWalkAttackCreatureResource(inherited Resource);
 end;
 
-function TWalkAttackCreature.Enemy: T3DAlive;
+function TWalkAttackCreature.Enemy: TAlive;
 begin
-  Result := World.Player;
+  Result := World.Player as TAlive;
   if (Result <> nil) and Result.Dead then
     Result := nil; { do not attack dead player }
 end;
@@ -1690,6 +1707,38 @@ begin
 end;
 
 procedure TWalkAttackCreature.Update(const SecondsPassed: Single; var RemoveMe: TRemoveType);
+
+  procedure UpdateResourceFrame;
+  var
+    StateTime: Single;
+  begin
+    { Time from the change to this state. }
+    StateTime := LifeTime - StateChangeTime;
+
+    case FState of
+      csIdle:
+        FResourceFrame.SetFrame(Resource.IdleAnimation, StateTime, true);
+      csWalk:
+        if Resource.IdleToWalkAnimation.Defined and
+           (StateTime < Resource.IdleToWalkAnimation.Duration) then
+          FResourceFrame.SetFrame(Resource.IdleToWalkAnimation, StateTime, false)
+        else
+          FResourceFrame.SetFrame(Resource.WalkAnimation,
+            StateTime - Resource.IdleToWalkAnimation.Duration, true);
+      csAttack:
+        FResourceFrame.SetFrame(Resource.AttackAnimation, StateTime, false);
+      csFireMissile:
+        FResourceFrame.SetFrame(Resource.FireMissileAnimation, StateTime, false);
+      csDie:
+        FResourceFrame.SetFrame(Resource.DieAnimation, StateTime, false);
+      csDieBack:
+        FResourceFrame.SetFrame(Resource.DieBackAnimation, StateTime, false);
+      csHurt:
+        FResourceFrame.SetFrame(Resource.HurtAnimation, StateTime, false);
+      else raise EInternalError.Create('FState ?');
+    end;
+  end;
+
 var
   EnemySensedNow: boolean;
   SqrDistanceToLastSensedEnemy: Single;
@@ -2268,7 +2317,7 @@ var
 
   { @true if last attack was from the back of the creature,
     @false if from the front or unknown (when LastHurtDirection is zero). }
-  function WasLackAttackBack: boolean;
+  function WasLastAttackBack: boolean;
   begin
     try
       Result := AngleRadBetweenVectors(LastHurtDirection, Direction) < Pi/2;
@@ -2284,36 +2333,36 @@ var
       RemoveMe := rtRemoveAndFree;
   end;
 
-  procedure UpdateDebug3D;
+  procedure UpdateDebugTransform;
   begin
-    if RenderDebug3D then
+    if RenderDebug then
     begin
-      if FDebug3DAlternativeTargetAxis = nil then
+      if FDebugAlternativeTargetAxis = nil then
       begin
-        FDebug3DAlternativeTargetAxis := TDebugAxis.Create(Self, BlueRGB);
-        FDebug3D.WorldSpace.AddChildren(FDebug3DAlternativeTargetAxis.Root);
-        FDebug3D.ChangedScene;
+        FDebugAlternativeTargetAxis := TDebugAxis.Create(Self, BlueRGB);
+        FDebugTransform.WorldSpace.AddChildren(FDebugAlternativeTargetAxis.Root);
+        FDebugTransform.ChangedScene;
       end;
 
-      FDebug3DAlternativeTargetAxis.Render := HasAlternativeTarget;
-      FDebug3DAlternativeTargetAxis.ScaleFromBox := BoundingBox;
-      FDebug3DAlternativeTargetAxis.Position := AlternativeTarget;
+      FDebugAlternativeTargetAxis.Render := HasAlternativeTarget;
+      FDebugAlternativeTargetAxis.ScaleFromBox := BoundingBox;
+      FDebugAlternativeTargetAxis.Position := AlternativeTarget;
 
-      if FDebug3DLastSensedEnemyAxis = nil then
+      if FDebugLastSensedEnemyAxis = nil then
       begin
-        FDebug3DLastSensedEnemyAxis := TDebugAxis.Create(Self, RedRGB);
-        FDebug3D.WorldSpace.AddChildren(FDebug3DLastSensedEnemyAxis.Root);
-        FDebug3D.ChangedScene;
+        FDebugLastSensedEnemyAxis := TDebugAxis.Create(Self, RedRGB);
+        FDebugTransform.WorldSpace.AddChildren(FDebugLastSensedEnemyAxis.Root);
+        FDebugTransform.ChangedScene;
       end;
 
-      FDebug3DLastSensedEnemyAxis.Render := HasLastSensedEnemy;
-      FDebug3DLastSensedEnemyAxis.ScaleFromBox := BoundingBox;
-      FDebug3DLastSensedEnemyAxis.Position := LastSensedEnemy;
+      FDebugLastSensedEnemyAxis.Render := HasLastSensedEnemy;
+      FDebugLastSensedEnemyAxis.ScaleFromBox := BoundingBox;
+      FDebugLastSensedEnemyAxis.Position := LastSensedEnemy;
     end;
   end;
 
 var
-  E: T3DOrient;
+  E: TCastleTransform;
 begin
   inherited;
   if (not GetExists) or DebugTimeStopForCreatures then Exit;
@@ -2323,9 +2372,11 @@ begin
 
   if Dead and not (State in [csDie, csDieBack]) then
   begin
-    if Resource.DieBackAnimation.Defined and WasLackAttackBack then
-      SetState(csDieBack) else
+    if Resource.DieBackAnimation.Defined and WasLastAttackBack then
+      SetState(csDieBack)
+    else
       SetState(csDie);
+    UpdateResourceFrame;
     Exit;
   end;
 
@@ -2373,39 +2424,8 @@ begin
   if not Gravity then
     UpPrefer(World.GravityUp);
 
-  UpdateDebug3D;
-end;
-
-function TWalkAttackCreature.GetChild: T3D;
-var
-  StateTime: Single;
-begin
-  if not Resource.Prepared then Exit(nil);
-
-  { Time from the change to this state. }
-  StateTime := LifeTime - StateChangeTime;
-
-  case FState of
-    csIdle:
-      Result := Resource.IdleAnimation.Scene(StateTime, true);
-    csWalk:
-      if Resource.IdleToWalkAnimation.Defined and
-         (StateTime < Resource.IdleToWalkAnimation.Duration) then
-        Result := Resource.IdleToWalkAnimation.Scene(StateTime, false) else
-        Result := Resource.WalkAnimation.Scene(
-          StateTime - Resource.IdleToWalkAnimation.Duration, true);
-    csAttack:
-      Result := Resource.AttackAnimation.Scene(StateTime, false);
-    csFireMissile:
-      Result := Resource.FireMissileAnimation.Scene(StateTime, false);
-    csDie:
-      Result := Resource.DieAnimation.Scene(StateTime, false);
-    csDieBack:
-      Result := Resource.DieBackAnimation.Scene(StateTime, false);
-    csHurt:
-      Result := Resource.HurtAnimation.Scene(StateTime, false);
-    else raise EInternalError.Create('FState ?');
-  end;
+  UpdateDebugTransform;
+  UpdateResourceFrame;
 end;
 
 procedure TWalkAttackCreature.SetLife(const Value: Single);
@@ -2420,7 +2440,7 @@ end;
 
 procedure TWalkAttackCreature.Attack;
 var
-  E: T3DAlive;
+  E: TAlive;
 
   function ShortRangeAttackHits: boolean;
   var
@@ -2507,7 +2527,7 @@ end;
 
 procedure TWalkAttackCreature.Hurt(const LifeLoss: Single;
   const HurtDirection: TVector3;
-  const AKnockbackDistance: Single; const Attacker: T3DAlive);
+  const AKnockbackDistance: Single; const Attacker: TAlive);
 begin
   inherited Hurt(LifeLoss, HurtDirection,
     AKnockbackDistance * Resource.KnockBackDistance, Attacker);
@@ -2539,8 +2559,17 @@ begin
 end;
 
 procedure TMissileCreature.Update(const SecondsPassed: Single; var RemoveMe: TRemoveType);
+
+  procedure UpdateResourceFrame;
+  begin
+    if Dead and Resource.DieAnimation.Defined then
+      FResourceFrame.SetFrame(Resource.DieAnimation, LifeTime - DieTime, false)
+    else
+      FResourceFrame.SetFrame(Resource.FlyAnimation, LifeTime, true);
+  end;
+
 var
-  Player: T3DOrient;
+  Player: TCastleTransform;
 
   function MissileMoveAllowed(const OldPos, NewPos: TVector3): boolean;
   begin
@@ -2630,7 +2659,7 @@ begin
 
   if (Resource.CloseDirectionToTargetSpeed <> 0.0) and (Player <> nil) then
   begin
-    TargetDirection := Player.Position - Position;
+    TargetDirection := Player.Translation - Translation;
     AngleBetween := AngleRadBetweenVectors(TargetDirection, Direction);
     AngleChange := Resource.CloseDirectionToTargetSpeed * SecondsPassed;
     if AngleBetween <= AngleChange then
@@ -2649,15 +2678,8 @@ begin
     LastSoundIdleTime := LifeTime;
     Sound3d(Resource.SoundIdle, 0.0);
   end;
-end;
 
-function TMissileCreature.GetChild: T3D;
-begin
-  if not Resource.Prepared then Exit(nil);
-
-  if Dead and Resource.DieAnimation.Defined then
-    Result := Resource.DieAnimation.Scene(LifeTime - DieTime, false) else
-    Result := Resource.FlyAnimation.Scene(LifeTime, true);
+  UpdateResourceFrame;
 end;
 
 procedure TMissileCreature.HitCore;
@@ -2672,7 +2694,7 @@ end;
 procedure TMissileCreature.HitPlayer;
 begin
   ForceRemoveDead := true;
-  AttackHurt(World.Player);
+  AttackHurt(World.Player as TAlive);
 end;
 
 procedure TMissileCreature.HitCreature(Creature: TCreature);
@@ -2688,16 +2710,16 @@ begin
   Result := TStillCreatureResource(inherited Resource);
 end;
 
-function TStillCreature.GetChild: T3D;
-begin
-  if not Resource.Prepared then Exit(nil);
-
-  if Dead and Resource.DieAnimation.Defined then
-    Result := Resource.DieAnimation.Scene(LifeTime - DieTime, false) else
-    Result := Resource.IdleAnimation.Scene(LifeTime, true);
-end;
-
 procedure TStillCreature.Update(const SecondsPassed: Single; var RemoveMe: TRemoveType);
+
+  procedure UpdateResourceFrame;
+  begin
+    if Dead and Resource.DieAnimation.Defined then
+      FResourceFrame.SetFrame(Resource.DieAnimation, LifeTime - DieTime, false)
+    else
+      FResourceFrame.SetFrame(Resource.IdleAnimation, LifeTime, true);
+  end;
+
 begin
   inherited;
   if (not GetExists) or DebugTimeStopForCreatures then Exit;
@@ -2707,6 +2729,8 @@ begin
     if Resource.RemoveDead and (LifeTime - DieTime > Resource.DieAnimation.Duration) then
       RemoveMe := rtRemoveAndFree;
   end;
+
+  UpdateResourceFrame;
 end;
 
 { initialization / finalization ---------------------------------------------- }

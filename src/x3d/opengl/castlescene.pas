@@ -13,7 +13,7 @@
   ----------------------------------------------------------------------------
 }
 
-{ VRML/X3D complete scene handling and OpenGL rendering (TCastleScene). }
+{ Rendering of scenes (TCastleScene). }
 unit CastleScene;
 
 {$I castleconf.inc}
@@ -26,7 +26,7 @@ uses SysUtils, Classes, Generics.Collections,
   CastleVectors, CastleBoxes, X3DNodes, CastleClassUtils,
   CastleUtils, CastleSceneCore, CastleRenderer, CastleBackground,
   CastleGLUtils, CastleInternalShapeOctree, CastleGLShadowVolumes, X3DFields,
-  CastleTriangles, CastleShapes, CastleFrustum, Castle3D, CastleGLShaders,
+  CastleTriangles, CastleShapes, CastleFrustum, CastleTransform, CastleGLShaders,
   CastleRectangles, CastleCameras, CastleRendererInternalShader,
   CastleSceneInternalShape, CastleSceneInternalOcclusion, CastleSceneInternalBlending;
 
@@ -102,6 +102,8 @@ type
 
   TRenderingAttributesEvent = procedure (Attributes: TSceneRenderingAttributes) of object;
 
+  { Rendering attributes,
+    available for every scene through @link(TCastleScene.Attributes). }
   TSceneRenderingAttributes = class(TRenderingAttributes)
   private
     { Scenes that use Renderer with this TSceneRenderingAttributes instance. }
@@ -111,6 +113,7 @@ type
     FBlendingSourceFactor: TBlendingSourceFactor;
     FBlendingDestinationFactor: TBlendingDestinationFactor;
     FBlendingSort: TBlendingSort;
+    FOcclusionSort: boolean;
     FControlBlending: boolean;
     FWireframeColor: TVector3;
     FWireframeEffect: TWireframeEffect;
@@ -131,7 +134,7 @@ type
     procedure SetControlBlending(const Value: boolean); virtual;
     procedure SetUseOcclusionQuery(const Value: boolean); virtual;
 
-    procedure SetShaders(const Value: TShadersRendering); override;
+    procedure SetPhongShading(const Value: boolean); override;
   public
     const
       { }
@@ -213,6 +216,10 @@ type
       read FBlendingSort write SetBlendingSort
       default DefaultBlendingSort;
 
+    { Sort the opaque objects when rendering.
+      This may generate speedup on some scenes. }
+    property OcclusionSort: boolean read FOcclusionSort write FOcclusionSort;
+
     { Setting this to @false disables any modification of OpenGL
       blending (and depth mask) state by TCastleScene.
       This makes every other @link(Blending) setting ignored,
@@ -285,10 +292,17 @@ type
       described in detail in "GPU Gems 2",
       Chapter 6: "Hardware Occlusion Queries Made Useful",
       by Michael Wimmer and Jiri Bittner. Online on
-      [http://http.developer.nvidia.com/GPUGems2/gpugems2_chapter06.html]. }
+      [http://http.developer.nvidia.com/GPUGems2/gpugems2_chapter06.html].
+
+      @exclude
+      @bold(Experimental):
+      Using the "Hierarchical Occlusion Query" is not adviced in the current implementation,
+      it is slow and it does not treat transparent shapes correctly.
+    }
     property UseHierarchicalOcclusionQuery: boolean
       read FUseHierarchicalOcclusionQuery
       write FUseHierarchicalOcclusionQuery default false;
+      experimental;
 
     { View only the shapes that were detected as visible by occlusion query
       in last Render.
@@ -324,14 +338,14 @@ type
   end;
 
 type
-  TPrepareResourcesOption = Castle3D.TPrepareResourcesOption;
-  TPrepareResourcesOptions = Castle3D.TPrepareResourcesOptions;
+  TPrepareResourcesOption = CastleTransform.TPrepareResourcesOption;
+  TPrepareResourcesOptions = CastleTransform.TPrepareResourcesOptions;
 
 const
-  prRender = Castle3D.prRender;
-  prBackground = Castle3D.prBackground;
-  prBoundingBox = Castle3D.prBoundingBox;
-  prShadowVolume = Castle3D.prShadowVolume;
+  prRender = CastleTransform.prRender;
+  prBackground = CastleTransform.prBackground;
+  prBoundingBox = CastleTransform.prBoundingBox;
+  prShadowVolume = CastleTransform.prShadowVolume;
 
 type
   { Possible checks done while frustum culling.
@@ -381,11 +395,13 @@ type
   { Basic non-abstact implementation of render params for calling T3D.Render.
 
     @exclude
-    @bold(This is a hack, exposed here only to support some really weird
-    OpenGL tricks in engine example programs. Do not use this in your own code.)
-    To be used when you have to call T3D.Render, but you don't use scene manager.
-    Usually this should not be needed, and this class may be removed at some
-    point! You should always try to use TCastleSceneManager to manage and render
+    @bold(This is exposed here only to support some experiments with non-standard
+    rendering in engine example programs. Do not use this in your own code.)
+    This can be used when you have to call T3D.Render,
+    but you don't use scene manager.
+    Usually this should not be needed.
+    This class may be removed at some point!
+    You should always try to use TCastleSceneManager to manage and render
     3D stuff in new programs, and then TCastleSceneManager will take care of creating
     proper render params instance for you. }
   TBasicRenderParams = class(TRenderParams)
@@ -393,37 +409,22 @@ type
     FBaseLights: TLightInstancesList;
     constructor Create;
     destructor Destroy; override;
-    function BaseLights(Scene: T3D): TLightInstancesList; override;
+    function BaseLights(Scene: TCastleTransform): TLightInstancesList; override;
   end;
 
-  { Complete handling and rendering of a 3D VRML/X3D scene.
-    This is a descendant of TCastleSceneCore that adds efficient rendering
-    using OpenGL.
-
-    This uses internal @link(TGLRenderer) instance,
-    adding some features and comfortable methods on top of it (like blending).
-    See @link(Render) method for some details.
-
-    This class also provides comfortable management for
-    @link(Background) instance to render the VRML/X3D background of this scene.
-
-    Calling methods PrepareResources, Render or Background connects this
-    class with current OpenGL context. Which means that all the following
-    calls should be done with the same OpenGL context set as current.
-    Calling GLContextClose or the destructor removes this connection. }
+  { Complete loading, processing and rendering of a scene.
+    This is a descendant of @link(TCastleSceneCore) that adds efficient rendering. }
   TCastleScene = class(TCastleSceneCore)
   private
     Renderer: TGLRenderer;
     FReceiveShadowVolumes: boolean;
     RegisteredGLContextCloseListener: boolean;
+    FTempPrepareParams: TPrepareParams;
 
-    { Cache used by this scene. Always initialized to non-nil by constructor. }
-    Cache: TGLRendererContextCache;
-
-    { used by RenderScene }
+    { used by LocalRenderInside }
     FilteredShapes: TShapeList;
 
-    { Render everything.
+    { Render everything using Renderer.
 
       Calls Renderer.RenderBegin.
       Then on all potentially visible Shapes[] calls RenderShape.
@@ -437,124 +438,11 @@ type
       shape before all opaque objects.
 
       Updates Params.Statistics. }
-    procedure RenderScene(TestShapeVisibility: TTestShapeVisibility;
+    procedure LocalRenderInside(const TestShapeVisibility: TTestShapeVisibility;
       const Frustum: TFrustum; const Params: TRenderParams);
 
-    { Destroy any associations of Renderer with OpenGL context.
-
-      This also destroys associations with OpenGL context in this class
-      @italic(that were made using Renderer). This doesn't destroy other
-      associations, like Background.
-
-      This is useful to call when we change something in Attributes,
-      since changing most Attributes (besides color modulators ?)
-      requires that we disconnect Renderer from OpenGL context.
-      Other things, like Background, don't have to be destroyed in this case. }
-    procedure CloseGLRenderer;
-    procedure GLContextCloseEvent(Sender: TObject);
-  private
-    FOwnsRenderer: boolean;
-
-    { Fog for this shape. @nil if none. }
-    function ShapeFog(Shape: TShape): IAbstractFogObject;
-    function EffectiveBlendingSort: TBlendingSort;
-  private
-    { Used by UpdateGeneratedTextures, to prevent rendering the shape
-      for which reflection texture is generated. (This wouldn't cause
-      recursive loop in our engine, but still it's bad --- rendering
-      from the inside of the object usually obscures the world around...). }
-    AvoidShapeRendering: TGLShape;
-
-    { Used by UpdateGeneratedTextures, to prevent rendering non-shadow casters
-      for shadow maps. }
-    AvoidNonShadowCasterRendering: boolean;
-
-    PreparedShapesResources, PreparedRender: boolean;
-    VarianceShadowMapsProgram: array [boolean] of TX3DShaderProgramBase;
-    FDistanceCulling: Single;
-
-    { Private things for RenderFrustum --------------------------------------- }
-
-    function FrustumCulling_None(Shape: TShape): boolean;
-    function FrustumCulling_Sphere(Shape: TShape): boolean;
-    function FrustumCulling_Box(Shape: TShape): boolean;
-    function FrustumCulling_Both(Shape: TShape): boolean;
-
-    function DistanceCullingCheck(Shape: TShape): boolean;
-  private
-          FFrustumCulling: TFrustumCulling;
-    FOctreeFrustumCulling: TFrustumCulling;
-    procedure       SetFrustumCulling(const Value: TFrustumCulling);
-    procedure SetOctreeFrustumCulling(const Value: TFrustumCulling);
-  private
-          FrustumCullingFunc: TTestShapeVisibility;
-    OctreeFrustumCullingFunc: TTestShapeVisibility;
-
-    RenderFrustum_Frustum: PFrustum;
-
-    function RenderFrustumOctree_TestShape(Shape: TShape): boolean;
-    procedure RenderFrustumOctree_EnumerateShapes(
-      ShapeIndex: Integer; CollidesForSure: boolean);
-
-    { Turn off lights that are not supposed to light in the shadow.
-      This simply turns LightOn to @false if the light has
-      shadowVolumes = TRUE (see
-      [http://castle-engine.sourceforge.net/x3d_extensions.php#section_ext_shadows]).
-
-      It's useful to pass this as LightRenderEvent to @link(Render)
-      when you use shadow algorithm that requires
-      you to make a first pass rendering the scene all shadowed. }
-    class procedure LightRenderInShadow(const Light: TLightInstance;
-      var LightOn: boolean);
-  private
-    HierarchicalOcclusionQueryRenderer: THierarchicalOcclusionQueryRenderer;
-    BlendingRenderer: TBlendingRenderer;
-  protected
-    function CreateShape(AGeometry: TAbstractGeometryNode;
-      AState: TX3DGraphTraverseState; ParentInfo: PTraversingInfo): TShape; override;
-    procedure InvalidateBackground; override;
-  public
-    constructor Create(AOwner: TComponent); override;
-
-    constructor CreateCustomCache(AOwner: TComponent; ACache: TGLRendererContextCache);
-
-    { A very special constructor, that forces this class to use
-      provided ACustomRenderer. ACustomRenderer must be <> @nil.
-
-      Note that this renderer must be created with AttributesClass
-      = TSceneRenderingAttributes.
-
-      @italic(Don't use this unless you really know what you're doing!)
-      In all normal circumstances you should use normal @link(Create)
-      constructor, that will internally create and use internal renderer object.
-      If you use this constructor you will have to understand how internally
-      this class synchronizes itself with underlying Renderer object.
-
-      Once again, if you're not sure, then simply don't use this
-      constructor. It's for internal use --- namely it's internally used
-      by TCastlePrecalculatedAnimation, this way all scenes of the animation share
-      the same renderer which means that they also share the same
-      information about textures and images loaded into OpenGL.
-      And this is crucial for TCastlePrecalculatedAnimation, otherwise animation with
-      100 scenes would load the same texture to OpenGL 100 times. }
-    constructor CreateCustomRenderer(AOwner: TComponent;
-      ACustomRenderer: TGLRenderer);
-
-    destructor Destroy; override;
-
-    { Destroy any associations of this object with current OpenGL context.
-      For example, release any allocated texture names.
-
-      Generally speaking, destroys everything that is allocated by
-      PrepareResources call. It's harmless to call this
-      method when there are already no associations with current OpenGL context.
-      This is called automatically from the destructor. }
-    procedure GLContextClose; override;
-
-    procedure PrepareResources(Options: TPrepareResourcesOptions;
-      ProgressStep: boolean; BaseLights: TAbstractLightInstancesList); override;
-
-    { Render for OpenGL. The rendering parameters are configurable
+    { Render everything using LocalRenderInside.
+      The rendering parameters are configurable
       by @link(Attributes), see TSceneRenderingAttributes and
       TRenderingAttributes.
 
@@ -597,19 +485,101 @@ type
 
         TestShapeVisibility callback may be used to implement frustum
         culling, or some other visibility algorithm.) }
-    procedure Render(TestShapeVisibility: TTestShapeVisibility;
+    procedure LocalRenderOutside(
+      const TestShapeVisibility: TTestShapeVisibility;
       const Frustum: TFrustum;
       const Params: TRenderParams);
 
-    procedure Render(const Frustum: TFrustum; const Params: TRenderParams); override;
+    { Destroy any associations of Renderer with OpenGL context.
 
-    procedure BeforeNodesFree(const InternalChangedAll: boolean = false); override;
+      This also destroys associations with OpenGL context in this class
+      @italic(that were made using Renderer). This doesn't destroy other
+      associations, like Background.
+
+      This is useful to call when we change something in Attributes,
+      since changing most Attributes (besides color modulators ?)
+      requires that we disconnect Renderer from OpenGL context.
+      Other things, like Background, don't have to be destroyed in this case. }
+    procedure CloseGLRenderer;
+    procedure GLContextCloseEvent(Sender: TObject);
+  private
+    { Fog for this shape. @nil if none. }
+    function ShapeFog(const Shape: TShape; const GlobalFog: TAbstractFogNode): IAbstractFogObject;
+    function EffectiveBlendingSort: TBlendingSort;
+  private
+    type
+      TCustomShaders = record
+        Shader: TX3DShaderProgramBase;
+        ShaderAlphaTest: TX3DShaderProgramBase;
+        procedure Initialize(const VertexCode, FragmentCode: string);
+        procedure Free;
+      end;
+
+    var
+      { Used by UpdateGeneratedTextures, to prevent rendering the shape
+        for which reflection texture is generated. (This wouldn't cause
+        recursive loop in our engine, but still it's bad --- rendering
+        from the inside of the object usually obscures the world around...). }
+      AvoidShapeRendering: TGLShape;
+
+      { Used by UpdateGeneratedTextures, to prevent rendering non-shadow casters
+        for shadow maps. }
+      AvoidNonShadowCasterRendering: boolean;
+
+      PreparedShapesResources, PreparedRender: boolean;
+      VarianceShadowMapsProgram, ShadowMapsProgram: TCustomShaders;
+      FDistanceCulling: Single;
+
+    { Private things for RenderFrustum --------------------------------------- }
+
+    function FrustumCulling_None(Shape: TShape): boolean;
+    function FrustumCulling_Sphere(Shape: TShape): boolean;
+    function FrustumCulling_Box(Shape: TShape): boolean;
+    function FrustumCulling_Both(Shape: TShape): boolean;
+
+    function DistanceCullingCheck(Shape: TShape): boolean;
+  private
+          FFrustumCulling: TFrustumCulling;
+    FOctreeFrustumCulling: TFrustumCulling;
+    procedure       SetFrustumCulling(const Value: TFrustumCulling);
+    procedure SetOctreeFrustumCulling(const Value: TFrustumCulling);
+  private
+          FrustumCullingFunc: TTestShapeVisibility;
+    OctreeFrustumCullingFunc: TTestShapeVisibility;
+
+    RenderFrustum_Frustum: PFrustum;
+
+    function RenderFrustumOctree_TestShape(Shape: TShape): boolean;
+    procedure RenderFrustumOctree_EnumerateShapes(
+      ShapeIndex: Integer; CollidesForSure: boolean);
+
+    { Turn off lights that are not supposed to light in the shadow.
+      This simply turns LightOn to @false if the light has
+      shadowVolumes = TRUE (see
+      [http://castle-engine.sourceforge.net/x3d_extensions.php#section_ext_shadows]).
+
+      It's useful to pass this as LightRenderEvent to @link(Render)
+      when you use shadow algorithm that requires
+      you to make a first pass rendering the scene all shadowed. }
+    class procedure LightRenderInShadow(const Light: TLightInstance;
+      var LightOn: boolean);
+  private
+    OcclusionQueryUtilsRenderer: TOcclusionQueryUtilsRenderer;
+    SimpleOcclusionQueryRenderer: TSimpleOcclusionQueryRenderer;
+    HierarchicalOcclusionQueryRenderer: THierarchicalOcclusionQueryRenderer;
+    BlendingRenderer: TBlendingRenderer;
+  protected
+    function CreateShape(AGeometry: TAbstractGeometryNode;
+      AState: TX3DGraphTraverseState; ParentInfo: PTraversingInfo): TShape; override;
+    procedure InvalidateBackground; override;
+
+    procedure LocalRender(const Frustum: TFrustum; const Params: TRenderParams); override;
 
     { Render shadow volume (sides and caps) of this scene, for shadow volume
       algorithm. Uses ShadowVolumeRenderer for rendering, and to detect if rendering
       is necessary at all.
       It will calculate current bounding box (looking at ParentTransform,
-      ParentTransformIsIdentity and BoundingBox method).
+      ParentTransformIsIdentity and LocalBoundingBox method).
 
       It always uses silhouette optimization. This is the usual,
       fast method of rendering shadow volumes.
@@ -646,28 +616,46 @@ type
       Faces (both shadow quads and caps) are rendered such that
       CCW <=> you're looking at it from outside
       (i.e. it's considered front face of this shadow volume). }
-    procedure RenderShadowVolume(
+    procedure LocalRenderShadowVolume(
       ShadowVolumeRenderer: TBaseShadowVolumeRenderer;
       const ParentTransformIsIdentity: boolean;
       const ParentTransform: TMatrix4); override;
+  public
+    constructor Create(AOwner: TComponent); override;
+
+    destructor Destroy; override;
+
+    { Destroy any associations of this object with current OpenGL context.
+      For example, release any allocated texture names.
+
+      Generally speaking, destroys everything that is allocated by
+      PrepareResources call. It's harmless to call this
+      method when there are already no associations with current OpenGL context.
+      This is called automatically from the destructor. }
+    procedure GLContextClose; override;
+
+    procedure PrepareResources(const Options: TPrepareResourcesOptions;
+      const ProgressStep: boolean; const Params: TPrepareParams); override;
+
+    procedure BeforeNodesFree(const InternalChangedAll: boolean = false); override;
 
     { Render silhouette edges.
       Silhouette is determined from the ObserverPos.
       Useful to debug (visualize) ManifoldEdges of the scene.
 
-      Whole scene is transformed by Transform (before checking which
+      Whole scene is transformed by ATransform (before checking which
       edges are silhouette and before rendering). In other words,
-      Transform must transform the scene to the same coord space where
+      ATransform must transform the scene to the same coord space where
       given ObserverPos is. When they are in the same space, just use
       TMatrix4.Identity. }
     procedure RenderSilhouetteEdges(
       const ObserverPos: TVector4;
-      const Transform: TMatrix4);
+      const ATransform: TMatrix4);
 
     { Render all border edges (the edges without neighbor).
       Useful to debug (visualize) BorderEdges of the scene. }
     procedure RenderBorderEdges(
-      const Transform: TMatrix4);
+      const ATransform: TMatrix4);
   private
     FBackgroundSkySphereRadius: Single;
     { Node for which FBackground is currently prepared. }
@@ -684,6 +672,11 @@ type
     procedure SetBackgroundSkySphereRadius(const Value: Single);
     procedure PrepareBackground;
   public
+    { Internal hack to avoid checking frustum at rendering in some situations. }
+    InternalIgnoreFrustum: boolean;
+    { Internal override test visibility. }
+    InternalVisibilityTest: TTestShapeVisibility;
+
     procedure FreeResources(Resources: TSceneFreeResources); override;
 
     property BackgroundSkySphereRadius: Single
@@ -748,6 +741,9 @@ type
     { @groupEnd }
 
     { Create a scene with the same contents (X3D scene graph) as this one.
+      The created scene has exactly the same class as this one
+      (we use ClassType.Create to call a virtual constructor).
+
       Note that this @bold(does not copy other scene attributes),
       like @link(ProcessEvents) or @link(Spatial) or rendering attributes
       in @link(Attributes). }
@@ -819,6 +815,15 @@ const
   bs2D = CastleBoxes.bs2D;
   bs3D = CastleBoxes.bs3D;
 
+  paDefault = CastleSceneCore.paDefault;
+  paForceLooping = CastleSceneCore.paForceLooping;
+  paForceNotLooping = CastleSceneCore.paForceNotLooping;
+
+  ssRendering = CastleSceneCore.ssRendering;
+  ssDynamicCollisions = CastleSceneCore.ssDynamicCollisions;
+  ssVisibleTriangles = CastleSceneCore.ssVisibleTriangles;
+  ssStaticCollisions = CastleSceneCore.ssStaticCollisions;
+
 implementation
 
 uses CastleGLVersion, CastleImages, CastleLog,
@@ -875,9 +880,56 @@ begin
   inherited;
 end;
 
-function TBasicRenderParams.BaseLights(Scene: T3D): TLightInstancesList;
+function TBasicRenderParams.BaseLights(Scene: TCastleTransform): TLightInstancesList;
 begin
   Result := FBaseLights;
+end;
+
+{ TCastleScene.TCustomShaders ------------------------------------------------ }
+
+procedure TCastleScene.TCustomShaders.Initialize(const VertexCode, FragmentCode: string);
+
+  procedure DoInitialize(const VertexCode, FragmentCode: string);
+  begin
+    { create programs if needed }
+    if Shader = nil then
+    begin
+      Shader := TX3DShaderProgramBase.Create;
+      Shader.AttachVertexShader(VertexCode);
+      Shader.AttachFragmentShader(FragmentCode);
+      Shader.Link;
+    end;
+
+    if ShaderAlphaTest = nil then
+    begin
+      ShaderAlphaTest := TX3DShaderProgramBase.Create;
+      ShaderAlphaTest.AttachVertexShader('#define ALPHA_TEST' + NL + VertexCode);
+      ShaderAlphaTest.AttachFragmentShader('#define ALPHA_TEST' + NL + FragmentCode);
+      ShaderAlphaTest.Link;
+    end;
+  end;
+
+begin
+  try
+    DoInitialize(VertexCode, FragmentCode);
+  except
+    on E: EGLSLError do
+    begin
+      FreeAndNil(Shader);
+      FreeAndNil(ShaderAlphaTest);
+
+      WritelnWarning('Scene', 'Error compiling/linking GLSL shaders for shadow maps: %s',
+        [E.Message]);
+
+      DoInitialize({$I fallback.vs.inc}, {$I fallback.fs.inc});
+    end;
+  end;
+end;
+
+procedure TCastleScene.TCustomShaders.Free;
+begin
+  FreeAndNil(Shader);
+  FreeAndNil(ShaderAlphaTest);
 end;
 
 { TCastleScene ------------------------------------------------------------ }
@@ -889,19 +941,7 @@ begin
     may call ViewChangedSuddenly which is overridden here and uses Attributes.
     That's why I have to initialize them *before* "inherited Create" }
 
-  { Cache may be already assigned, when we came here from
-    CreateCustomRenderer or CreateCustomCache. }
-  if Cache = nil then
-    Cache := GLContextCache;
-
-  { Renderer may be already assigned, when we came here from
-    CreateCustomRenderer. }
-  if Renderer = nil then
-  begin
-    FOwnsRenderer := true;
-    Renderer := TGLRenderer.Create(TSceneRenderingAttributes, Cache);
-  end;
-
+  Renderer := TGLRenderer.Create(TSceneRenderingAttributes, GLContextCache);
   Assert(Renderer.Attributes is TSceneRenderingAttributes);
 
   { Note that this calls Renderer.Attributes, so use this after
@@ -924,34 +964,24 @@ begin
   FReceiveShadowVolumes := true;
 
   FilteredShapes := TShapeList.Create;
+  FTempPrepareParams := TPrepareParams.Create;
 
-  HierarchicalOcclusionQueryRenderer := THierarchicalOcclusionQueryRenderer.Create(Self);
+  OcclusionQueryUtilsRenderer := TOcclusionQueryUtilsRenderer.Create;
+  SimpleOcclusionQueryRenderer := TSimpleOcclusionQueryRenderer.Create(
+    Self, OcclusionQueryUtilsRenderer);
+  HierarchicalOcclusionQueryRenderer := THierarchicalOcclusionQueryRenderer.Create(
+    Self, OcclusionQueryUtilsRenderer);
   BlendingRenderer := TBlendingRenderer.Create(Self);
-end;
-
-constructor TCastleScene.CreateCustomCache(
-  AOwner: TComponent; ACache: TGLRendererContextCache);
-begin
-  Assert(ACache <> nil);
-  Cache := ACache;
-
-  Create(AOwner);
-end;
-
-constructor TCastleScene.CreateCustomRenderer(
-  AOwner: TComponent; ACustomRenderer: TGLRenderer);
-begin
-  FOwnsRenderer := false;
-  Renderer := ACustomRenderer;
-
-  CreateCustomCache(AOwner, ACustomRenderer.Cache);
 end;
 
 destructor TCastleScene.Destroy;
 begin
   FreeAndNil(HierarchicalOcclusionQueryRenderer);
+  FreeAndNil(SimpleOcclusionQueryRenderer);
+  FreeAndNil(OcclusionQueryUtilsRenderer);
   FreeAndNil(BlendingRenderer);
   FreeAndNil(FilteredShapes);
+  FreeAndNil(FTempPrepareParams);
 
   if RegisteredGLContextCloseListener and
      (ApplicationProperties <> nil) then
@@ -967,39 +997,33 @@ begin
   if Renderer <> nil then
     Attributes.FScenes.Remove(Self);
 
-  if FOwnsRenderer then
-  begin
-    { We must release all connections between RootNode and Renderer first.
-      Reason: when freeing RootNode, image references (from texture nodes)
-      are decremented. So cache used when loading these images must be
-      available.
+  { We must release all connections between RootNode and Renderer first.
+    Reason: when freeing RootNode, image references (from texture nodes)
+    are decremented. So cache used when loading these images must be
+    available.
 
-      If we used custom renderer, then this is not
-      our problem: if OwnsRootNode then RootNode will be freed soon
-      by "inherited", if not OwnsRootNode then it's the using programmer
-      responsibility to free both RootNode and CustomRenderer
-      in exactly this order.
+    If we used custom renderer, then this is not
+    our problem: if OwnsRootNode then RootNode will be freed soon
+    by "inherited", if not OwnsRootNode then it's the using programmer
+    responsibility to free both RootNode and CustomRenderer
+    in exactly this order.
 
-      If we used our own renderer (actually, this is needed only if we used
-      own own cache, so caller didn't provide a renderer and didn't provide
-      a cache (ACache = nil for constructor), but we don't store this information
-      for now) : we must make sure that freeing RootNode is safe.
+    If we used our own renderer (actually, this is needed only if we used
+    own own cache, so caller didn't provide a renderer and didn't provide
+    a cache (ACache = nil for constructor), but we don't store this information
+    for now) : we must make sure that freeing RootNode is safe.
 
-      If OwnsRootNode then we know that inherited will free RootNode
-      and so the simpler solution, to just FreeAndNil(Renderer) after
-      inherited, would be possible. But it's not possible, since
-      OwnsRootNode may be false and then programmer may want to free
-      RootNode at undefined later time.
+    If OwnsRootNode then we know that inherited will free RootNode
+    and so the simpler solution, to just FreeAndNil(Renderer) after
+    inherited, would be possible. But it's not possible, since
+    OwnsRootNode may be false and then programmer may want to free
+    RootNode at undefined later time.
 
-      So we have to guarantee, *now*, that freeing RootNode is safe ---
-      no dangling references to Renderer.Cache. }
-    FreeResources([frTextureDataInNodes, frBackgroundImageInNodes]);
+    So we have to guarantee, *now*, that freeing RootNode is safe ---
+    no dangling references to Renderer.Cache. }
+  FreeResources([frTextureDataInNodes, frBackgroundImageInNodes]);
 
-    FreeAndNil(Renderer);
-  end else
-    Renderer := nil;
-
-  Cache := nil; // just for safety
+  FreeAndNil(Renderer);
 
   inherited;
 end;
@@ -1063,10 +1087,8 @@ begin
     for I := 0 to ScreenEffectNodes.Count - 1 do
       CloseGLScreenEffect(TScreenEffectNode(ScreenEffectNodes[I]));
 
-  { TODO: if FOwnsRenderer then we should do something more detailed
-    then just Renderer.UnprepareAll. It's not needed for TCastlePrecalculatedAnimation
-    right now, so it's not implemented. }
-  if Renderer <> nil then Renderer.UnprepareAll;
+  if Renderer <> nil then
+    Renderer.UnprepareAll;
 
   if Shapes <> nil then
   begin
@@ -1077,10 +1099,8 @@ begin
     finally FreeAndNil(SI) end;
   end;
 
-  if VarianceShadowMapsProgram[false] <> nil then
-    FreeAndNil(VarianceShadowMapsProgram[false]);
-  if VarianceShadowMapsProgram[true] <> nil then
-    FreeAndNil(VarianceShadowMapsProgram[true]);
+  VarianceShadowMapsProgram.Free;
+  ShadowMapsProgram.Free;
 end;
 
 procedure TCastleScene.GLContextClose;
@@ -1088,6 +1108,8 @@ begin
   inherited;
   CloseGLRenderer;
   InvalidateBackground;
+  if OcclusionQueryUtilsRenderer <> nil then
+    OcclusionQueryUtilsRenderer.GLContextClose;
 end;
 
 procedure TCastleScene.GLContextCloseEvent(Sender: TObject);
@@ -1095,11 +1117,13 @@ begin
   GLContextClose;
 end;
 
-function TCastleScene.ShapeFog(Shape: TShape): IAbstractFogObject;
+function TCastleScene.ShapeFog(const Shape: TShape; const GlobalFog: TAbstractFogNode): IAbstractFogObject;
 begin
   Result := Shape.State.LocalFog;
   if Result = nil then
     Result := FogStack.Top;
+  if Result = nil then
+    Result := GlobalFog as TFogNode;
 end;
 
 function TCastleScene.EffectiveBlendingSort: TBlendingSort;
@@ -1117,8 +1141,8 @@ begin
     Result := Attributes.BlendingSort;
 end;
 
-procedure TCastleScene.RenderScene(
-  TestShapeVisibility: TTestShapeVisibility;
+procedure TCastleScene.LocalRenderInside(
+  const TestShapeVisibility: TTestShapeVisibility;
   const Frustum: TFrustum; const Params: TRenderParams);
 var
   ModelView: TMatrix4;
@@ -1126,10 +1150,18 @@ var
   { Transformation of Params.RenderTransform and current RenderingCamera
     expressed as a single combined matrix. }
   function GetModelViewTransform: TMatrix4;
+  var
+    CameraMatrix: PMatrix4;
   begin
+    if RenderingCamera.RotationOnly then
+      CameraMatrix := @RenderingCamera.RotationMatrix
+    else
+      CameraMatrix := @RenderingCamera.Matrix;
+
     if Params.RenderTransformIdentity then
-      Result := RenderingCamera.Matrix else
-      Result := RenderingCamera.Matrix * Params.RenderTransform;
+      Result := CameraMatrix^
+    else
+      Result := CameraMatrix^ * Params.RenderTransform;
   end;
 
   { Renders Shape, by calling Renderer.RenderShape. }
@@ -1138,7 +1170,7 @@ var
     { implement Shape node "render" field here, by a trivial check }
     if (Shape.Node <> nil) and (not Shape.Node.Render) then Exit;
 
-    OcclusionBoxStateEnd;
+    OcclusionQueryUtilsRenderer.OcclusionBoxStateEnd;
 
     if (Params.Pass = 0) and not ExcludeFromStatistics then
       Inc(Params.Statistics.ShapesRendered);
@@ -1150,7 +1182,7 @@ var
       Shape.Cache.FreeArrays([vtAttribute]);
 
     Shape.ModelView := ModelView;
-    Renderer.RenderShape(Shape, ShapeFog(Shape));
+    Renderer.RenderShape(Shape, ShapeFog(Shape, Params.GlobalFog));
     IsVisibleNow := true;
   end;
 
@@ -1176,10 +1208,12 @@ var
       if Attributes.ReallyUseOcclusionQuery and
          (RenderingCamera.Target = rtScreen) then
       begin
-        SimpleOcclusionQueryRender(Self, Shape, @RenderShape_NoTests, Params);
+        SimpleOcclusionQueryRenderer.Render(Shape, @RenderShape_NoTests, Params);
       end else
+      {$warnings off}
       if Attributes.DebugHierOcclusionQueryResults and
          Attributes.UseHierarchicalOcclusionQuery then
+      {$warnings on}
       begin
         if HierarchicalOcclusionQueryRenderer.WasLastVisible(Shape) then
           RenderShape_NoTests(Shape);
@@ -1278,23 +1312,27 @@ begin
     UpdateVisibilitySensors;
   end;
 
-  OcclusionBoxState := false;
-
   if Params.InShadow then
     LightRenderEvent := @LightRenderInShadow else
     LightRenderEvent := nil;
 
   ModelView := GetModelViewTransform;
+  OcclusionQueryUtilsRenderer.ModelViewProjectionMatrix :=
+    RenderContext.ProjectionMatrix * ModelView;
+  OcclusionQueryUtilsRenderer.ModelViewProjectionMatrixChanged := true;
 
   {$ifndef OpenGLES}
-  if not Params.RenderTransformIdentity then
+  if GLFeatures.EnableFixedFunction then
   begin
-    glPushMatrix;
-    glMultMatrix(Params.RenderTransform);
+    if not Params.RenderTransformIdentity then
+    begin
+      glPushMatrix;
+      glMultMatrix(Params.RenderTransform);
+    end;
+    { TODO: this should be replaced with just
+    glLoadMatrix(GetModelViewTransform);
+      to just load full matrix, and be consistent with what happens when GLFeatures.EnableFixedFunction=false. }
   end;
-  { TODO: this should be replaced with just
-  glLoadMatrix(GetModelViewTransform);
-    to just load full matrix, and be consistent with what happens on OpenGLES. }
   {$endif}
 
   Renderer.RenderBegin(Params.BaseLights(Self) as TLightInstancesList,
@@ -1308,7 +1346,7 @@ begin
       RenderAllAsOpaque(Attributes.Mode = rmDepth);
 
       { Each RenderShape_SomeTests inside could set OcclusionBoxState }
-      OcclusionBoxStateEnd;
+      OcclusionQueryUtilsRenderer.OcclusionBoxStateEnd;
     end else
     if Attributes.ReallyUseHierarchicalOcclusionQuery and
        (not Attributes.DebugHierOcclusionQueryResults) and
@@ -1319,7 +1357,7 @@ begin
         Frustum, Params);
 
       { Inside we could set OcclusionBoxState }
-      OcclusionBoxStateEnd;
+      OcclusionQueryUtilsRenderer.OcclusionBoxStateEnd;
     end else
     begin
       if Attributes.Blending then
@@ -1327,7 +1365,8 @@ begin
         if not Params.Transparent then
         begin
           { draw fully opaque objects }
-          if CameraViewKnown and Attributes.ReallyUseOcclusionQuery then
+          if CameraViewKnown and
+            (Attributes.ReallyUseOcclusionQuery or Attributes.OcclusionSort) then
           begin
             ShapesFilterBlending(Shapes, true, true, false,
               TestShapeVisibility, FilteredShapes, false);
@@ -1378,23 +1417,25 @@ begin
 
       { Each RenderShape_SomeTests inside could set OcclusionBoxState.
 
-        TODO: in case of blending, glPopAttrib inside could restore now
+        TODO: in case of fixed-function path,
+        glPopAttrib inside could restore now
         glDepthMask(GL_TRUE) and glDisable(GL_BLEND).
-        This problem will disappear when we'll get rid of push/pop inside
-        OcclusionBoxStateXxx. }
-      OcclusionBoxStateEnd;
+        This problem will disappear when we'll get rid of fixed-function
+        possibility in OcclusionBoxStateEnd. }
+      OcclusionQueryUtilsRenderer.OcclusionBoxStateEnd;
     end;
   finally Renderer.RenderEnd end;
 
   {$ifndef OpenGLES}
-  if not Params.RenderTransformIdentity then
-    glPopMatrix;
+  if GLFeatures.EnableFixedFunction then
+    if not Params.RenderTransformIdentity then
+      glPopMatrix;
   {$endif}
 end;
 
 procedure TCastleScene.PrepareResources(
-  Options: TPrepareResourcesOptions; ProgressStep: boolean;
-  BaseLights: TAbstractLightInstancesList);
+  const Options: TPrepareResourcesOptions;
+  const ProgressStep: boolean; const Params: TPrepareParams);
 
   procedure PrepareShapesResources;
   var
@@ -1420,11 +1461,11 @@ procedure TCastleScene.PrepareResources(
     try
       Inc(Renderer.PrepareRenderShape);
       try
-        Renderer.RenderBegin(BaseLights as TLightInstancesList, nil, 0);
+        Renderer.RenderBegin(Params.InternalBaseLights as TLightInstancesList, nil, 0);
         while SI.GetNext do
         begin
           Shape := TGLShape(SI.Current);
-          Renderer.RenderShape(Shape, ShapeFog(Shape));
+          Renderer.RenderShape(Shape, ShapeFog(Shape, Params.InternalGlobalFog));
         end;
         Renderer.RenderEnd;
       finally Dec(Renderer.PrepareRenderShape) end;
@@ -1505,13 +1546,13 @@ begin
   finally Dec(InternalDirty) end;
 end;
 
-procedure TCastleScene.Render(
-  TestShapeVisibility: TTestShapeVisibility;
+procedure TCastleScene.LocalRenderOutside(
+  const TestShapeVisibility: TTestShapeVisibility;
   const Frustum: TFrustum; const Params: TRenderParams);
 
   procedure RenderNormal;
   begin
-    RenderScene(TestShapeVisibility, Frustum, Params);
+    LocalRenderInside(TestShapeVisibility, Frustum, Params);
   end;
 
   {$ifndef OpenGLES} // TODO-es For OpenGLES, wireframe must be done differently
@@ -1597,50 +1638,42 @@ procedure TCastleScene.Render(
   procedure RenderWithShadowMaps;
   var
     SavedMode: TRenderingMode;
-    SavedCustomShader, SavedCustomShaderAlphaTest: TX3DShaderProgramBase;
+    SavedShaders, NewShaders: TCustomShaders;
   begin
     { For shadow maps, speed up rendering by using only features that affect
-      depth output. This also disables user shaders (for both classic
-      and VSM shadow maps, consistently). }
+      depth output. Also set up specialized shaders. }
     if RenderingCamera.Target in [rtVarianceShadowMap, rtShadowMap] then
     begin
       SavedMode := Attributes.Mode;
       Attributes.Mode := rmDepth;
-    end;
 
-    { When rendering to Variance Shadow Map, we need special shader. }
-    if RenderingCamera.Target = rtVarianceShadowMap then
-    begin
-      { create VarianceShadowMapsProgram if needed }
-      if VarianceShadowMapsProgram[false] = nil then
+      if RenderingCamera.Target = rtVarianceShadowMap then
       begin
-        VarianceShadowMapsProgram[false] := TX3DShaderProgramBase.Create;
-        VarianceShadowMapsProgram[false].AttachFragmentShader({$I variance_shadow_map_generate.fs.inc});
-        VarianceShadowMapsProgram[false].Link;
+        VarianceShadowMapsProgram.Initialize(
+          '#define VARIANCE_SHADOW_MAPS' + NL + {$I shadow_map_generate.vs.inc},
+          '#define VARIANCE_SHADOW_MAPS' + NL + {$I shadow_map_generate.fs.inc});
+        NewShaders := VarianceShadowMapsProgram;
+      end else
+      begin
+        ShadowMapsProgram.Initialize(
+          {$I shadow_map_generate.vs.inc},
+          {$I shadow_map_generate.fs.inc});
+        NewShaders := ShadowMapsProgram;
       end;
 
-      if VarianceShadowMapsProgram[true] = nil then
-      begin
-        VarianceShadowMapsProgram[true] := TX3DShaderProgramBase.Create;
-        VarianceShadowMapsProgram[true].AttachFragmentShader(
-          '#define ALPHA_TEST' + NL + {$I variance_shadow_map_generate.fs.inc});
-        VarianceShadowMapsProgram[true].Link;
-      end;
-
-      SavedCustomShader          := Attributes.CustomShader;
-      SavedCustomShaderAlphaTest := Attributes.CustomShaderAlphaTest;
-      Attributes.CustomShader          := VarianceShadowMapsProgram[false];
-      Attributes.CustomShaderAlphaTest := VarianceShadowMapsProgram[true];
+      SavedShaders.Shader          := Attributes.CustomShader;
+      SavedShaders.ShaderAlphaTest := Attributes.CustomShaderAlphaTest;
+      Attributes.CustomShader          := NewShaders.Shader;
+      Attributes.CustomShaderAlphaTest := NewShaders.ShaderAlphaTest;
     end;
 
     RenderWithWireframeEffect;
 
     if RenderingCamera.Target in [rtVarianceShadowMap, rtShadowMap] then
-      Attributes.Mode := SavedMode;
-    if RenderingCamera.Target = rtVarianceShadowMap then
     begin
-      Attributes.CustomShader          := SavedCustomShader;
-      Attributes.CustomShaderAlphaTest := SavedCustomShaderAlphaTest;
+      Attributes.Mode := SavedMode;
+      Attributes.CustomShader          := SavedShaders.Shader;
+      Attributes.CustomShaderAlphaTest := SavedShaders.ShaderAlphaTest;
     end;
   end;
 
@@ -1648,7 +1681,7 @@ begin
   { This is usually called by Render(Frustum, Params) that probably
     already did tests below. But it may also be called directly,
     so do the checks below anyway. (The checks are trivial, so no speed harm.) }
-  if GetExists and (InternalDirty = 0) and
+  if GetVisible and (InternalDirty = 0) and
      (ReceiveShadowVolumes = Params.ShadowVolumesReceivers) then
   begin
     { I used to make here more complex "prepare" mechanism, that was trying
@@ -1664,7 +1697,9 @@ begin
         before actually rendering the shape).
 
       It's much simpler to just call PrepareResources at the beginning. }
-    PrepareResources([prRender], false, Params.BaseLights(Self));
+    FTempPrepareParams.InternalBaseLights := Params.BaseLights(Self);
+    FTempPrepareParams.InternalGlobalFog := Params.GlobalFog;
+    PrepareResources([prRender], false, FTempPrepareParams);
 
     RenderWithShadowMaps;
   end;
@@ -1696,7 +1731,7 @@ end;
 
 { Shadow volumes ------------------------------------------------------------- }
 
-procedure TCastleScene.RenderShadowVolume(
+procedure TCastleScene.LocalRenderShadowVolume(
   ShadowVolumeRenderer: TBaseShadowVolumeRenderer;
   const ParentTransformIsIdentity: boolean;
   const ParentTransform: TMatrix4);
@@ -1707,14 +1742,14 @@ var
   T: TMatrix4;
   ForceOpaque: boolean;
 begin
-  if GetExists and CastShadowVolumes then
+  if GetVisible and CastShadowVolumes then
   begin
     SVRenderer := ShadowVolumeRenderer as TGLShadowVolumeRenderer;
 
     ForceOpaque := not (Attributes.Blending and (Attributes.Mode = rmFull));
 
     { calculate and check SceneBox }
-    SceneBox := BoundingBox;
+    SceneBox := LocalBoundingBox;
     if not ParentTransformIsIdentity then
       SceneBox := SceneBox.Transform(ParentTransform);
     SVRenderer.InitCaster(SceneBox);
@@ -1747,7 +1782,7 @@ end;
 
 procedure TCastleScene.RenderSilhouetteEdges(
   const ObserverPos: TVector4;
-  const Transform: TMatrix4);
+  const ATransform: TMatrix4);
 var
   SI: TShapeTreeIterator;
   T: TMatrix4;
@@ -1756,14 +1791,14 @@ begin
   try
     while SI.GetNext do
     begin
-      T := Transform * SI.Current.State.Transform;
+      T := ATransform * SI.Current.State.Transform;
       SI.Current.InternalShadowVolumes.RenderSilhouetteEdges(ObserverPos, T);
     end;
   finally FreeAndNil(SI) end;
 end;
 
 procedure TCastleScene.RenderBorderEdges(
-  const Transform: TMatrix4);
+  const ATransform: TMatrix4);
 var
   SI: TShapeTreeIterator;
   T: TMatrix4;
@@ -1772,7 +1807,7 @@ begin
   try
     while SI.GetNext do
     begin
-      T := Transform * SI.Current.State.Transform;
+      T := ATransform * SI.Current.State.Transform;
       SI.Current.InternalShadowVolumes.RenderBorderEdges(T);
     end;
   finally FreeAndNil(SI) end;
@@ -1868,18 +1903,17 @@ begin
     Shape.RenderFrustumOctree_Visible := true;
 end;
 
-procedure TCastleScene.Render(const Frustum: TFrustum; const Params: TRenderParams);
+procedure TCastleScene.LocalRender(const Frustum: TFrustum; const Params: TRenderParams);
 
-{ Call Render with explicit TTestShapeVisibility function.
-  That is, choose test function suitable for our Frustum,
-  octrees and some settings.
+{ Call LocalRenderOutside, choosing TTestShapeVisibility function
+  suitable for our Frustum, octrees and some settings.
 
   If InternalOctreeRendering is initialized (so be sure to include
   ssRendering in @link(Spatial)), this octree will be used to quickly
-  find visible Shape. Otherwise, we will just enumerate all
+  find visible Shapes. Otherwise, we will just enumerate all
   Shapes (which may be slower if you really have a lot of Shapes). }
 
-  procedure RenderFrustumOctree(Octree: TShapeOctree);
+  procedure TestOctreeWithFrustum(Octree: TShapeOctree);
 
     procedure ResetShapeVisible(Shape: TShape);
     begin
@@ -1888,20 +1922,29 @@ procedure TCastleScene.Render(const Frustum: TFrustum; const Params: TRenderPara
 
   begin
     Shapes.Traverse(@ResetShapeVisible, false, true);
-    Octree.EnumerateCollidingOctreeItems(Frustum,
-      @RenderFrustumOctree_EnumerateShapes);
-    Render(@RenderFrustumOctree_TestShape, Frustum, Params);
+    Octree.EnumerateCollidingOctreeItems(Frustum, @RenderFrustumOctree_EnumerateShapes);
   end;
 
 begin
-  if GetExists and (InternalDirty = 0) and
+  inherited;
+
+  if GetVisible and (InternalDirty = 0) and
      (ReceiveShadowVolumes = Params.ShadowVolumesReceivers) then
   begin
     RenderFrustum_Frustum := @Frustum;
 
+    if Assigned(InternalVisibilityTest) then
+      LocalRenderOutside(InternalVisibilityTest, Frustum, Params)
+    else
+    if InternalIgnoreFrustum then
+      LocalRenderOutside(nil, Frustum, Params)
+    else
     if InternalOctreeRendering <> nil then
-      RenderFrustumOctree(InternalOctreeRendering) else
-      Render(FrustumCullingFunc, Frustum, Params);
+    begin
+      TestOctreeWithFrustum(InternalOctreeRendering);
+      LocalRenderOutside(@RenderFrustumOctree_TestShape, Frustum, Params);
+    end else
+      LocalRenderOutside(FrustumCullingFunc, Frustum, Params);
   end;
 end;
 
@@ -1996,7 +2039,7 @@ begin
     Renderer.UpdateGeneratedTextures(Shape, TextureNode,
       RenderFunc, ProjectionNear, ProjectionFar, NeedsRestoreViewport,
       ViewpointStack.Top,
-      CameraViewKnown, CameraPosition, CameraDirection, CameraUp);
+      CameraViewKnown, CameraWorldPosition, CameraWorldDirection, CameraWorldUp);
 
     AvoidShapeRendering := nil;
     AvoidNonShadowCasterRendering := false;
@@ -2074,14 +2117,14 @@ var
   SE: TScreenEffectNode;
 begin
   Result := 0;
-  if Attributes.Shaders <> srDisable then
-    for I := 0 to ScreenEffectNodes.Count - 1 do
-    begin
-      SE := TScreenEffectNode(ScreenEffectNodes[I]);
-      Renderer.PrepareScreenEffect(SE);
-      if SE.Shader <> nil then
-        Inc(Result);
-    end;
+
+  for I := 0 to ScreenEffectNodes.Count - 1 do
+  begin
+    SE := TScreenEffectNode(ScreenEffectNodes[I]);
+    Renderer.PrepareScreenEffect(SE);
+    if SE.Shader <> nil then
+      Inc(Result);
+  end;
 end;
 
 function TCastleScene.ScreenEffects(Index: Integer): TGLSLProgram;
@@ -2131,7 +2174,7 @@ end;
 
 function TCastleScene.Clone(const AOwner: TComponent): TCastleScene;
 begin
-  Result := TCastleScene.Create(AOwner);
+  Result := TComponentClass(ClassType).Create(AOwner) as TCastleScene;
   if RootNode <> nil then
     Result.Load(RootNode.DeepCopy as TX3DRootNode, true);
 end;
@@ -2146,6 +2189,7 @@ begin
   FBlendingSourceFactor := DefaultBlendingSourceFactor;
   FBlendingDestinationFactor := DefaultBlendingDestinationFactor;
   FBlendingSort := DefaultBlendingSort;
+  FOcclusionSort := false;
   FControlBlending := true;
   FSolidWireframeScale := DefaultSolidWireframeScale;
   FSolidWireframeBias := DefaultSolidWireframeBias;
@@ -2177,9 +2221,12 @@ begin
     BlendingSourceFactor := S.BlendingSourceFactor;
     BlendingDestinationFactor := S.BlendingDestinationFactor;
     BlendingSort := S.BlendingSort;
+    OcclusionSort := S.OcclusionSort;
     ControlBlending := S.ControlBlending;
     UseOcclusionQuery := S.UseOcclusionQuery;
+    {$warnings off}
     UseHierarchicalOcclusionQuery := S.UseHierarchicalOcclusionQuery;
+    {$warnings on}
     inherited;
   end else
     inherited;
@@ -2252,26 +2299,32 @@ end;
 
 function TSceneRenderingAttributes.ReallyUseOcclusionQuery: boolean;
 begin
+  {$warnings off}
   Result := UseOcclusionQuery and (not UseHierarchicalOcclusionQuery) and
-    GLFeatures.ARB_occlusion_query and (GLFeatures.QueryCounterBits > 0);
-end;
-
-function TSceneRenderingAttributes.
-  ReallyUseHierarchicalOcclusionQuery: boolean;
-begin
-  Result := UseHierarchicalOcclusionQuery and GLFeatures.ARB_occlusion_query and
+    GLFeatures.ARB_occlusion_query and
+    GLFeatures.VertexBufferObject and
     (GLFeatures.QueryCounterBits > 0);
+  {$warnings on}
 end;
 
-procedure TSceneRenderingAttributes.SetShaders(const Value: TShadersRendering);
+function TSceneRenderingAttributes.ReallyUseHierarchicalOcclusionQuery: boolean;
+begin
+  {$warnings off}
+  Result := UseHierarchicalOcclusionQuery and
+    GLFeatures.ARB_occlusion_query and
+    GLFeatures.VertexBufferObject and
+    (GLFeatures.QueryCounterBits > 0);
+  {$warnings on}
+end;
+
+procedure TSceneRenderingAttributes.SetPhongShading(const Value: boolean);
 var
   I: Integer;
 begin
-  if Shaders <> Value then
+  if PhongShading <> Value then
   begin
     inherited;
-    { When switching to a higher TShadersRendering value
-      (that uses more shaders), we want to force generating necessary
+    { When switching this we want to force generating necessary
       shaders at the next PrepareResources call. Otherwise shaders would
       be prepared only when shapes come into view, which means that navigating
       awfully stutters for some time after changing this property. }

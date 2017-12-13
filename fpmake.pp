@@ -121,6 +121,7 @@ begin
     P.Targets.AddUnit('castlespacefillingcurves.pas');
     P.Targets.AddUnit('castlespheresampling.pas');
     P.Targets.AddUnit('castlesphericalharmonics.pas');
+    P.Targets.AddUnit('castletransform.pas');
 
     P.SourcePath.Add('src' + PathDelim + '3d' + PathDelim + 'opengl');
     P.Targets.AddUnit('castleglboxes.pas');
@@ -156,6 +157,7 @@ begin
     P.Targets.AddUnit('castleprogressconsole.pas');
     P.Targets.AddUnit('castleprojection.pas');
     P.Targets.AddUnit('castlerectangles.pas');
+    P.Targets.AddUnit('castlerendererbasetypes.pas');
     P.Targets.AddUnit('castlestreamutils.pas');
     P.Targets.AddUnit('castlestringutils.pas');
     P.Targets.AddUnit('castletimeutils.pas');
@@ -171,6 +173,7 @@ begin
     P.SourcePath.Add('src' + PathDelim + 'services');
     P.Targets.AddUnit('castleads.pas');
     P.Targets.AddUnit('castleanalytics.pas');
+    P.Targets.AddUnit('castlegameservice.pas');
     P.Targets.AddUnit('castlegoogleplaygames.pas');
     P.Targets.AddUnit('castlehelpshift.pas');
     P.Targets.AddUnit('castleinapppurchases.pas');
@@ -243,7 +246,7 @@ begin
     P.SourcePath.Add('src' + PathDelim + 'game');
     P.Targets.AddUnit('castle2dscenemanager.pas');
     P.Targets.AddUnit('castlecreatures.pas');
-    P.Targets.AddUnit('castledebug3d.pas');
+    P.Targets.AddUnit('castledebugtransform.pas');
     P.Targets.AddUnit('castlegamenotifications.pas');
     P.Targets.AddUnit('castleitems.pas');
     P.Targets.AddUnit('castlelevels.pas');
@@ -350,7 +353,6 @@ begin
     P.Targets.AddUnit('castlerendererinternallights.pas');
     P.Targets.AddUnit('castlerendererinternaltextureenv.pas');
     P.Targets.AddUnit('castlerenderer.pas');
-    P.Targets.AddUnit('castleprecalculatedanimation.pas');
 
     Run;
   end;

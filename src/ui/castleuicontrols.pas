@@ -686,7 +686,7 @@ type
       @param(RectOrCursorChanged Set to @true if the final control size
         or position on the screen, or cursor, changed. This simply causes a call
         to @link(TUIContainer.UpdateFocusAndMouseCursor).) }
-    procedure VisibleChange(const RectOrCursorChanged: boolean = false);
+    procedure VisibleChange(const RectOrCursorChanged: boolean = false); virtual;
 
     { Called always when some visible part of this control
       changes. In the simplest case, this is used by the controls manager to
@@ -788,7 +788,7 @@ type
     Parent control is recorded inside @link(Parent). A control
     may only be a child of one other control --- that is, you cannot
     insert to the 2D hierarchy the same control multiple times
-    (in T3D hierarchy, such trick is allowed).
+    (in TCastleTransform hierarchy, such trick is allowed).
 
     Control may handle mouse/keyboard input, see @link(Press) and @link(Release)
     methods.
@@ -1195,7 +1195,9 @@ type
       coordinates. }
     function ScreenRect: TRectangle;
 
-    { How to translate local coords to screen. }
+    { How to translate local coords to screen.
+      If you use UI scaling, this works in final coordinates
+      (after scaling, real pixels on screen). }
     function LocalToScreenTranslation: TVector2Integer;
 
     { Rectangle filling the parent control (or coordinates), in local coordinates.

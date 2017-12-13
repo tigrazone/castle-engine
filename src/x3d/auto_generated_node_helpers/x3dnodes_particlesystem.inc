@@ -53,8 +53,13 @@
     property ParticleLifetime: Single read GetParticleLifetime write SetParticleLifetime;
     property ParticleSize: TVector2 read GetParticleSize write SetParticleSize;
     property ColorRamp: TAbstractColorNode read GetColorRamp write SetColorRamp;
+    procedure SetColorKey(const Value: array of Single);
+    procedure SetColorKey(const Value: TSingleList);
     property Emitter: TAbstractParticleEmitterNode read GetEmitter write SetEmitter;
+    procedure SetPhysics(const Value: array of TAbstractParticlePhysicsModelNode);
     property TexCoordRamp: TTextureCoordinateNode read GetTexCoordRamp write SetTexCoordRamp;
+    procedure SetTexCoordKey(const Value: array of Single);
+    procedure SetTexCoordKey(const Value: TSingleList);
 
 {$endif read_interface}
 
@@ -135,6 +140,16 @@ begin
   FdColorRamp.Send(Value);
 end;
 
+procedure TParticleSystemNode.SetColorKey(const Value: array of Single);
+begin
+  FdColorKey.Send(Value);
+end;
+
+procedure TParticleSystemNode.SetColorKey(const Value: TSingleList);
+begin
+  FdColorKey.Send(Value);
+end;
+
 function TParticleSystemNode.GetEmitter: TAbstractParticleEmitterNode;
 begin
   if FdEmitter.Value is TAbstractParticleEmitterNode then
@@ -148,6 +163,18 @@ begin
   FdEmitter.Send(Value);
 end;
 
+procedure TParticleSystemNode.SetPhysics(const Value: array of TAbstractParticlePhysicsModelNode);
+var
+  L: Integer;
+  A: array of TX3DNode;
+begin
+  L := High(Value) + 1;
+  SetLength(A, L);
+  if L > 0 then
+    Move(Value[0], A[0], L * SizeOf(TAbstractParticlePhysicsModelNode));
+  FdPhysics.Send(A);
+end;
+
 function TParticleSystemNode.GetTexCoordRamp: TTextureCoordinateNode;
 begin
   if FdTexCoordRamp.Value is TTextureCoordinateNode then
@@ -159,6 +186,16 @@ end;
 procedure TParticleSystemNode.SetTexCoordRamp(const Value: TTextureCoordinateNode);
 begin
   FdTexCoordRamp.Send(Value);
+end;
+
+procedure TParticleSystemNode.SetTexCoordKey(const Value: array of Single);
+begin
+  FdTexCoordKey.Send(Value);
+end;
+
+procedure TParticleSystemNode.SetTexCoordKey(const Value: TSingleList);
+begin
+  FdTexCoordKey.Send(Value);
 end;
 
 {$endif read_implementation}

@@ -52,6 +52,7 @@
     function GetZSpacing: Single;
     procedure SetZSpacing(const Value: Single);
   public
+    procedure SetAttrib(const Value: array of TAbstractVertexAttributeNode);
     property Color: TAbstractColorNode read GetColor write SetColor;
     property FogCoord: TFogCoordinateNode read GetFogCoord write SetFogCoord;
     property Normal: TAbstractNormalNode read GetNormal write SetNormal;
@@ -59,6 +60,8 @@
     property Ccw: boolean read GetCcw write SetCcw;
     property ColorPerVertex: boolean read GetColorPerVertex write SetColorPerVertex;
     property CreaseAngle: Single read GetCreaseAngle write SetCreaseAngle;
+    procedure SetHeight(const Value: array of Single);
+    procedure SetHeight(const Value: TSingleList);
     property NormalPerVertex: boolean read GetNormalPerVertex write SetNormalPerVertex;
     property XDimension: Integer read GetXDimension write SetXDimension;
     property XSpacing: Single read GetXSpacing write SetXSpacing;
@@ -70,6 +73,18 @@
 {$ifdef read_implementation}
 
 { TElevationGridNode ----------------------------------------------- }
+
+procedure TElevationGridNode.SetAttrib(const Value: array of TAbstractVertexAttributeNode);
+var
+  L: Integer;
+  A: array of TX3DNode;
+begin
+  L := High(Value) + 1;
+  SetLength(A, L);
+  if L > 0 then
+    Move(Value[0], A[0], L * SizeOf(TAbstractVertexAttributeNode));
+  FdAttrib.Send(A);
+end;
 
 function TElevationGridNode.GetColor: TAbstractColorNode;
 begin
@@ -151,6 +166,16 @@ end;
 procedure TElevationGridNode.SetCreaseAngle(const Value: Single);
 begin
   FdCreaseAngle.Send(Value);
+end;
+
+procedure TElevationGridNode.SetHeight(const Value: array of Single);
+begin
+  FdHeight.Send(Value);
+end;
+
+procedure TElevationGridNode.SetHeight(const Value: TSingleList);
+begin
+  FdHeight.Send(Value);
 end;
 
 function TElevationGridNode.GetNormalPerVertex: boolean;

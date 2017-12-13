@@ -178,11 +178,8 @@ EXAMPLES_BASE_NAMES := \
   examples/research_special_rendering_methods/shadow_fields/shadow_fields \
   examples/research_special_rendering_methods/dynamic_ambient_occlusion/dynamic_ambient_occlusion \
   examples/terrain/terrain \
-  examples/3d_rendering_processing/custom_3d_object \
   examples/3d_rendering_processing/triangulate_demo \
   examples/3d_rendering_processing/placeholder_names \
-  examples/3d_rendering_processing/tools/gen_light_map \
-  examples/3d_rendering_processing/tools/castle_anim_frames_to_interpolators \
   examples/3d_rendering_processing/multiple_viewports \
   examples/3d_rendering_processing/fog_culling \
   examples/research_special_rendering_methods/plane_mirror_and_shadow/plane_mirror_and_shadow \
@@ -195,15 +192,14 @@ EXAMPLES_BASE_NAMES := \
   examples/3d_rendering_processing/build_3d_object_by_code \
   examples/3d_rendering_processing/build_3d_tunnel \
   examples/3d_rendering_processing/combine_multiple_x3d_into_one \
+  examples/3d_rendering_processing/display_box_custom_shaders \
   examples/3d_rendering_processing/listen_on_x3d_events \
   examples/3d_rendering_processing/cars_demo \
   examples/3d_rendering_processing/render_3d_to_texture_and_use_as_quad \
   src/x3d/teapot/teapot_3d_to_pascal \
   src/x3d/nodes_specification/x3d-nodes-to-pascal/x3d-nodes-to-pascal \
-  examples/fixed_camera_game/rift \
   examples/isometric_game/sandbox \
   examples/3d_sound_game/lets_take_a_walk \
-  examples/3d_sound_game/data/levels/base/devel/process_base_b \
   examples/resource_animations/resource_animations \
   examples/fps_game/fps_game \
   examples/2d_standard_ui/show_various_ui_controls/show_various_ui_controls \
@@ -211,7 +207,6 @@ EXAMPLES_BASE_NAMES := \
   examples/2d_standard_ui/timer_test/timer_test \
   examples/2d_standard_ui/zombie_fighter/zombie_fighter \
   examples/mobile/simple_3d_demo/simple_3d_demo_standalone \
-  tools/build-tool/castle-engine \
   tools/image-to-pascal/image-to-pascal \
   tools/texture-font-to-pascal/texture-font-to-pascal \
   tools/castle-curves/castle-curves \
@@ -230,7 +225,8 @@ EXAMPLES_LAZARUS_BASE_NAMES := \
   tests/test_castle_game_engine \
   src/library/castleengine \
   examples/library/lazarus_library_tester/cge_dynlib_tester \
-  examples/random_generator/graphics_random_test
+  examples/random_generator/graphics_random_test \
+  tools/build-tool/code/castle-engine
 
 EXAMPLES_UNIX_EXECUTABLES := $(EXAMPLES_BASE_NAMES) \
   $(EXAMPLES_LAZARUS_BASE_NAMES)

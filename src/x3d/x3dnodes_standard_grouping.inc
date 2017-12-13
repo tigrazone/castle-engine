@@ -87,8 +87,13 @@
     public property FdRender: TSFBool read FFdRender;
 
     { Add the nodes as children.
-      Adding a node that already exists on the children list is ignored,
-      so this list should never have duplicates.
+      Adding a node that already exists on the children list is ignored.
+
+      Note: This method prevents adding duplicates to the children list.
+      And the X3D specification doesn't allow duplicates on the children list.
+      But our engine allows duplicates on the children list ---
+      you can specify them in the X3D file,
+      or you can add them using @link(FdChildren).Add.
 
       This propagates the changes appropriately to the parent TCastleSceneCore,
       calling TCastleSceneCore.ChangedAll or something similar. }
@@ -97,6 +102,10 @@
 
     { Remove the nodes from the children list.
       Removing a node that does not exist on the children list is ignored.
+
+      If a node exists on the current children list multiple times,
+      then a single occurrence of this node is removed,
+      for each occurrence of this node in the parameters list.
 
       This propagates the changes appropriately to the parent TCastleSceneCore,
       calling TCastleSceneCore.ChangedAll or something similar. }
@@ -545,27 +554,25 @@ begin
 
   FEventAddChildren := TMFNodeEvent.Create(Self, 'addChildren', true);
   AddEvent(FEventAddChildren);
-  EventaddChildren.OnReceive.Add({$ifdef CASTLE_OBJFPC}@{$endif} EventAddChildrenReceive);
+  EventaddChildren.AddNotification({$ifdef CASTLE_OBJFPC}@{$endif} EventAddChildrenReceive);
 
   FEventRemoveChildren := TMFNodeEvent.Create(Self, 'removeChildren', true);
   AddEvent(FEventRemoveChildren);
-  EventRemoveChildren.OnReceive.Add({$ifdef CASTLE_OBJFPC}@{$endif} EventRemoveChildrenReceive);
+  EventRemoveChildren.AddNotification({$ifdef CASTLE_OBJFPC}@{$endif} EventRemoveChildrenReceive);
 
-  FFdChildren := TMFNode.Create(Self, 'children', IAbstractChildNode);
+  FFdChildren := TMFNode.Create(Self, true, 'children', IAbstractChildNode);
    FdChildren.ChangesAlways := [chEverything];
   AddField(FFdChildren);
 
-  FFdBboxCenter := TSFVec3f.Create(Self, 'bboxCenter', TVector3.Zero);
-  FFdBboxCenter.Exposed := false;
+  FFdBboxCenter := TSFVec3f.Create(Self, false, 'bboxCenter', TVector3.Zero);
   AddField(FFdBboxCenter);
   { X3D specification comment: (-Inf,Inf) }
 
-  FFdBboxSize := TSFVec3f.Create(Self, 'bboxSize', Vector3(-1, -1, -1));
-  FFdBboxSize.Exposed := false;
+  FFdBboxSize := TSFVec3f.Create(Self, false, 'bboxSize', Vector3(-1, -1, -1));
   AddField(FFdBboxSize);
   { X3D specification comment: [0,Inf) or -1 -1 -1 }
 
-  FFdRender := TSFBool.Create(Self, 'render', true);
+  FFdRender := TSFBool.Create(Self, true, 'render', true);
   AddField(FFdRender);
 
   DefaultContainerField := 'children';
@@ -884,18 +891,15 @@ procedure TStaticGroupNode.CreateNode;
 begin
   inherited;
 
-  FFdChildren := TMFNode.Create(Self, 'children', IAbstractChildNode);
-   FdChildren.Exposed := false;
+  FFdChildren := TMFNode.Create(Self, false, 'children', IAbstractChildNode);
    FdChildren.ChangesAlways := [chEverything];
   AddField(FFdChildren);
 
-  FFdBboxCenter := TSFVec3f.Create(Self, 'bboxCenter', Vector3(0, 0, 0));
-  FFdBboxCenter.Exposed := false;
+  FFdBboxCenter := TSFVec3f.Create(Self, false, 'bboxCenter', Vector3(0, 0, 0));
   AddField(FFdBboxCenter);
   { X3D specification comment: (-Inf,Inf) }
 
-  FFdBboxSize := TSFVec3f.Create(Self, 'bboxSize', Vector3(-1, -1, -1));
-  FFdBboxSize.Exposed := false;
+  FFdBboxSize := TSFVec3f.Create(Self, false, 'bboxSize', Vector3(-1, -1, -1));
   AddField(FFdBboxSize);
   { X3D specification comment: [0,Inf) or -1 -1 -1 }
 
@@ -925,7 +929,7 @@ begin
 
   Fdchildren.AddAlternativeName('choice', 2);
 
-  FFdWhichChoice := TSFInt32.Create(Self, 'whichChoice', -1);
+  FFdWhichChoice := TSFInt32.Create(Self, true, 'whichChoice', -1);
    FdWhichChoice.ChangesAlways := [chSwitch2];
   AddField(FFdWhichChoice);
   { X3D specification comment: [-1,Inf) }
@@ -969,27 +973,27 @@ procedure TTransformNode.CreateNode;
 begin
   inherited;
 
-  FFdCenter := TSFVec3f.Create(Self, 'center', Vector3(0, 0, 0));
+  FFdCenter := TSFVec3f.Create(Self, true, 'center', Vector3(0, 0, 0));
    FdCenter.ChangesAlways := [chTransform];
   AddField(FFdCenter);
   { X3D specification comment: (-Inf,Inf) }
 
-  FFdRotation := TSFRotation.Create(Self, 'rotation', Vector3(0, 0, 1), 0);
+  FFdRotation := TSFRotation.Create(Self, true, 'rotation', Vector3(0, 0, 1), 0);
    FdRotation.ChangesAlways := [chTransform];
   AddField(FFdRotation);
   { X3D specification comment: [-1,1] or (-Inf,Inf) }
 
-  FFdScale := TSFVec3f.Create(Self, 'scale', Vector3(1, 1, 1));
+  FFdScale := TSFVec3f.Create(Self, true, 'scale', Vector3(1, 1, 1));
    FdScale.ChangesAlways := [chTransform];
   AddField(FFdScale);
   { X3D specification comment: (-Inf, Inf) }
 
-  FFdScaleOrientation := TSFRotation.Create(Self, 'scaleOrientation', Vector3(0, 0, 1), 0);
+  FFdScaleOrientation := TSFRotation.Create(Self, true, 'scaleOrientation', Vector3(0, 0, 1), 0);
    FdScaleOrientation.ChangesAlways := [chTransform];
   AddField(FFdScaleOrientation);
   { X3D specification comment: [-1,1] or (-Inf,Inf) }
 
-  FFdTranslation := TSFVec3f.Create(Self, 'translation', Vector3(0, 0, 0));
+  FFdTranslation := TSFVec3f.Create(Self, true, 'translation', Vector3(0, 0, 0));
    FdTranslation.ChangesAlways := [chTransform];
   AddField(FFdTranslation);
   { X3D specification comment: (-Inf,Inf) }
@@ -1031,9 +1035,57 @@ procedure TransformState(State: TX3DGraphTraverseState;
   const Scale: TVector3;
   const ScaleOrientation: TVector4;
   const Translation: TVector3);
+{ Workaround FPC 3.0.4 bug (internal error) on Darwin for AArch64
+  (not on other platforms):
+  x3dnodes_standard_grouping.inc(1035,3) Fatal: Internal error 2014121702
+}
+{$if defined(VER3_0) and defined(DARWIN) and defined(CPUARM64)}
+
+  type
+    TTransformData = record
+      Transform, InverseTransform: TMatrix4;
+      Center: TVector3;
+      Rotation: TVector4;
+      Scale: TVector3;
+      ScaleOrientation: TVector4;
+      Translation: TVector3;
+    end;
+
+  procedure TransformMatricesMultWorkaround(var TransformData: TTransformData);
+  begin
+    CastleTransform.TransformMatricesMult(
+      TransformData.Transform,
+      TransformData.InverseTransform,
+      TransformData.Center,
+      TransformData.Rotation,
+      TransformData.Scale,
+      TransformData.ScaleOrientation,
+      TransformData.Translation);
+  end;
+
+var
+  TransformData: TTransformData;
+begin
+  TransformData.Transform := State.Transform;
+  TransformData.InverseTransform := State.InvertedTransform;;
+  TransformData.Center := Center;
+  TransformData.Rotation := Rotation;
+  TransformData.Scale := Scale;
+  TransformData.ScaleOrientation := ScaleOrientation;
+  TransformData.Translation := Translation;
+
+  // Doing it like this avoids
+  // Fatal: Internal error 2014121702
+  // from FPC 3.0.3 for 64-bit iPhone (Darwin for AArch64)
+  TransformMatricesMultWorkaround(TransformData);
+
+  State.Transform := TransformData.Transform;
+  State.InvertedTransform := TransformData.InverseTransform;
+{$else}
 begin
   TransformMatricesMult(State.Transform, State.InvertedTransform,
     Center, Rotation, Scale, ScaleOrientation, Translation);
+{$endif}
   State.TransformScale := State.TransformScale * Approximate3DScale(Scale);
 end;
 

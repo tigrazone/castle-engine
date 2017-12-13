@@ -43,7 +43,7 @@ uses SysUtils, CastleWindow, CastleScene, X3DFields, X3DNodes,
   CastleUtils, CastleGLUtils, CastleBoxes, CastleVectors,
   CastleProgress, CastleWindowProgress, CastleStringUtils,
   CastleParameters, CastleImages, CastleMessages, CastleFilesUtils, CastleGLImages,
-  Castle3D, CastleSoundEngine, CastleRectangles,
+  CastleTransform, CastleSoundEngine, CastleRectangles,
   CastleRenderingCamera, Classes, CastleControls, CastleLevels, CastleConfig,
   CastleInputs, CastleKeysMouse, CastlePlayer, CastleControlsImages;
 
@@ -55,25 +55,25 @@ var
   Player: TPlayer; //< same thing as Window.SceneManager.Player
 
   TntScene: TCastleScene;
-  Rat: T3DTransform;
+  Rat: TCastleScene;
   RatAngle: Single;
 
   stRatSound, stRatSqueak, stKaboom, stCricket: TSoundType;
   RatSound: TSound;
 
+  HelpMessage: TCastleLabel;
   MuteImage: TCastleImageControl;
+  Crosshair: TCastleCrosshair;
 
 { TNT ------------------------------------------------------------------------ }
 
 type
-  TTnt = class(T3DTransform)
+  TTnt = class(TCastleTransform)
   private
     ToRemove: boolean;
-  protected
-    function GetChild: T3D; override;
   public
     function PointingDeviceActivate(const Active: boolean;
-      const Distance: Single): boolean; override;
+      const Distance: Single; const CancelAction: boolean = false): boolean; override;
     procedure Update(const SecondsPassed: Single; var RemoveMe: TRemoveType); override;
   end;
 
@@ -84,15 +84,10 @@ const
 var
   TntsCount: Integer = 0;
 
-function TTnt.GetChild: T3D;
-begin
-  Result := TntScene;
-end;
-
 function TTnt.PointingDeviceActivate(const Active: boolean;
-  const Distance: Single): boolean;
+  const Distance: Single; const CancelAction: boolean): boolean;
 begin
-  Result := Active and not ToRemove;
+  Result := Active and (not ToRemove) and (not CancelAction);
   if not Result then Exit;
 
   SoundEngine.Sound3D(stKaboom, Translation);
@@ -113,7 +108,7 @@ begin
   T := Translation;
   if T.Data[2] > 0 then
   begin
-    T.Data[2] -= 5 * SecondsPassed;
+    T.Data[2] := T.Data[2] - (5 * SecondsPassed);
     MaxVar(T.Data[2], 0);
     Translation := T;
   end;
@@ -130,6 +125,7 @@ var
 begin
   TntSize := TntScene.BoundingBox.MaxSize;
   Tnt := TTnt.Create(SceneManager);
+  Tnt.Add(TntScene);
   Box := SceneManager.MainScene.BoundingBox;
   Tnt.Translation := Vector3(
     RandomFloatRange(Box.Data[0].Data[0], Box.Data[1].Data[0]-TntSize),
@@ -150,15 +146,9 @@ var
   T: TVector3;
 begin
   T := RatCircleMiddle;
-  T.Data[0] += Cos(RatAngle) * RatCircleRadius;
-  T.Data[1] += Sin(RatAngle) * RatCircleRadius;
+  T.Data[0] := T.Data[0] + (Cos(RatAngle) * RatCircleRadius);
+  T.Data[1] := T.Data[1] + (Sin(RatAngle) * RatCircleRadius);
   Rat.Translation := T;
-end;
-
-function LoadScene(const Name: string; AOwner: TComponent): TCastleScene;
-begin
-  Result := TCastleScene.Create(AOwner);
-  Result.Load(ApplicationData('3d/' + Name));
 end;
 
 type
@@ -195,27 +185,20 @@ const
   Version = '1.2.4';
   DisplayApplicationName = 'lets_take_a_walk';
 
-procedure ShowHelpMessage;
-const
-  HelpMessage = {$I help_message.inc};
-begin
-  MessageOK(Window, HelpMessage + nl +
-    SCastleEngineProgramHelpSuffix(DisplayApplicationName, Version, false));
-end;
-
 { window callbacks ----------------------------------------------------------- }
 
 procedure Close(Container: TUIContainer);
 begin
   { in case no TNT actually exists in scene at closing time (you managed
     to explode them all), be sure to clean the OpenGL resources inside TntScene. }
-  TntScene.GLContextClose;
+  if TntScene <> nil then
+    TntScene.GLContextClose;
 end;
 
 procedure Update(Container: TUIContainer);
 begin
   { update rat }
-  RatAngle += 0.5 * Window.Fps.UpdateSecondsPassed;
+  RatAngle := RatAngle + (0.5 * Window.Fps.UpdateSecondsPassed);
   UpdateRatPosition;
   if RatSound <> nil then
     RatSound.Position := Rat.Translation;
@@ -232,7 +215,13 @@ begin
     case Event.Key of
       K_T : (SceneManager.MainScene.Event('MyScript', 'forceThunderNow')
               as TSFBoolEvent).Send(true);
-      K_F1: ShowHelpMessage;
+      K_F1: HelpMessage.Exists := not HelpMessage.Exists;
+      K_F4:
+        begin
+          Player.Camera.MouseLook := not Player.Camera.MouseLook;
+          // crosshair makes sense only with mouse look
+          Crosshair.Exists := Player.Camera.MouseLook;
+        end;
       K_F5: Window.SaveScreen(FileNameAutoInc('lets_take_a_walk_screen_%d.png'));
     end;
 end;
@@ -312,6 +301,31 @@ begin
   MuteImage.Exists := false; // don't show it on initial progress
   Window.Controls.InsertFront(MuteImage);
 
+  Crosshair := TCastleCrosshair.Create(Application);
+  Crosshair.Exists := false;
+  Window.Controls.InsertFront(Crosshair);
+
+  HelpMessage := TCastleLabel.Create(Application);
+  HelpMessage.Caption :=
+    'Movement:' + NL +
+    '  A W S D and Arrow keys = move and rotate' + NL +
+    '  Space = jump' + NL +
+    '  C = crouch' + NL +
+    '  And see the rest of default "The Castle" game key shortcuts.' + NL +
+    '' + NL +
+    'Other:' + NL +
+    '  F1 = toggle this help' + NL +
+    '  F4 = toggle mouse look' + NL +
+    '  F5 = save screen to file lets_take_a_walk_<int>.png' + NL +
+    '  F11 = toggle fullscreen mode' + NL +
+    '  Escape = exit';
+  HelpMessage.Anchor(hpLeft, 10);
+  HelpMessage.Anchor(vpTop, -10);
+  HelpMessage.Frame := true;
+  HelpMessage.FrameColor := Vector4(0.25, 0.25, 0.25, 1);
+  HelpMessage.Padding := 10;
+  Window.Controls.InsertFront(HelpMessage);
+
   { open window, to have OpenGL context }
   Window.Open;
 
@@ -343,13 +357,14 @@ begin
   SceneManager.LoadLevel('base');
 
   { init Rat }
-  Rat := T3DTransform.Create(SceneManager);
-  Rat.Add(LoadScene('rat.x3d', SceneManager));
+  Rat := TCastleScene.Create(SceneManager);
+  Rat.Load(ApplicationData('3d/rat.x3d'));
   SceneManager.Items.Add(Rat);
   UpdateRatPosition;
 
   { init Tnt }
-  TntScene := LoadScene('tnt.wrl', SceneManager);
+  TntScene := TCastleScene.Create(SceneManager);
+  TntScene.Load(ApplicationData('3d/tnt.wrl'));
   while TntsCount < MaxTntsCount do NewTnt(0.0);
 
   { init 3D sounds }

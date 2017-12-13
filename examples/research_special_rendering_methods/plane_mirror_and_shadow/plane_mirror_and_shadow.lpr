@@ -209,12 +209,9 @@ var
               in bad places }
             glDepthFunc(GL_ALWAYS);
 
-            { TODO: RenderingCamera.Frustum is actually invalid.
-              But we pass TestShapeVisibility = nil, and we don't use
-              VisibilitySensor inside these models,
-              so frustum value isn't really used. }
-
-            SceneForShadow.Render(nil, RenderingCamera.Frustum, RenderParams);
+            { TODO: RenderingCamera.Frustum is invalid. }
+            SceneForShadow.InternalIgnoreFrustum := true;
+            SceneForShadow.Render(RenderingCamera.Frustum, RenderParams);
           glPopAttrib();
         glPopMatrix();
       glPopAttrib();
@@ -293,15 +290,17 @@ var
             inside working as usual etc.
 
             We swap CCW to CW --- sides that were CCW previously (and had to
-            be culled, or have normal vectors pointing from them) are now CW. }
+            be culled, or have normal vectors pointing from them) are now CW.
+
+            TODO: this assumes glFrontFace by default.
+            In a real implementation, this should do *negate any FrontFaceCcw
+            interpretation* inside CastleRenderer,
+            so different faces are visible (and have normals defined). }
           glFrontFace(GL_CW);
 
-          { TODO: RenderingCamera.Frustum is actually invalid.
-            But we pass TestShapeVisibility = nil, and we don't use
-            VisibilitySensor inside these models,
-            so frustum value isn't really used. }
-
-          Scene.Render(nil, RenderingCamera.Frustum, RenderParams);
+          { TODO: RenderingCamera.Frustum is invalid. }
+          Scene.InternalIgnoreFrustum := true;
+          Scene.Render(RenderingCamera.Frustum, RenderParams);
           glFrontFace(GL_CCW);
         glPopMatrix();
 
@@ -402,12 +401,9 @@ begin
     glPushMatrix();
       glRotatef(RotationAngle, 1, 1, 1);
 
-      { TODO: RenderingCamera.Frustum is actually invalid.
-        But we pass TestShapeVisibility = nil, and we don't use
-        VisibilitySensor inside these models,
-        so frustum value isn't really used. }
-
-      Scene.Render(nil, RenderingCamera.Frustum, RenderParams);
+      { TODO: RenderingCamera.Frustum is invalid. }
+      Scene.InternalIgnoreFrustum := true;
+      Scene.Render(RenderingCamera.Frustum, RenderParams);
     glPopMatrix();
 
     BoxMaxSize := Box.MaxSize;
@@ -506,6 +502,9 @@ var
 
 procedure Open(Container: TUIContainer);
 begin
+  { TODO: this demo uses specialized rendering
+    that currently assumes some fixed-function things set up. }
+  GLFeatures.EnableFixedFunction := true;
 end;
 
 procedure Close(Container: TUIContainer);
@@ -564,7 +563,7 @@ begin
 
           SceneURL := S;
           { reinit camera, since Scene.BoundingBox changed }
-          (SceneManager.Camera as TExamineCamera).Init(Scene.BoundingBox, 0.1);
+          SceneManager.ExamineCamera.Init(Scene.BoundingBox, 0.1);
         end;
       end;
     12: Window.Close;
@@ -669,8 +668,7 @@ begin
     RenderParams.FBaseLights.Add(LightInstance);
 
     { init SceneManager.Camera }
-    SceneManager.Camera := TExamineCamera.Create(Window);
-    (SceneManager.Camera as TExamineCamera).Init(Scene.BoundingBox, 0.02);
+    SceneManager.ExamineCamera.Init(Scene.BoundingBox, 0.02);
 
     Window.MainMenu := CreateMainMenu;
     Window.OnMenuClick := @MenuClick;

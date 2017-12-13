@@ -36,16 +36,33 @@
     function GetColorPerVertex: boolean;
     procedure SetColorPerVertex(const Value: boolean);
   public
+    procedure SetAttrib(const Value: array of TAbstractVertexAttributeNode);
     property Color: TAbstractColorNode read GetColor write SetColor;
     property Coord: TAbstractCoordinateNode read GetCoord write SetCoord;
     property FogCoord: TFogCoordinateNode read GetFogCoord write SetFogCoord;
+    procedure SetColorIndex(const Value: array of LongInt);
+    procedure SetColorIndex(const Value: TLongIntList);
     property ColorPerVertex: boolean read GetColorPerVertex write SetColorPerVertex;
+    procedure SetCoordIndex(const Value: array of LongInt);
+    procedure SetCoordIndex(const Value: TLongIntList);
 
 {$endif read_interface}
 
 {$ifdef read_implementation}
 
 { TIndexedLineSetNode ----------------------------------------------- }
+
+procedure TIndexedLineSetNode.SetAttrib(const Value: array of TAbstractVertexAttributeNode);
+var
+  L: Integer;
+  A: array of TX3DNode;
+begin
+  L := High(Value) + 1;
+  SetLength(A, L);
+  if L > 0 then
+    Move(Value[0], A[0], L * SizeOf(TAbstractVertexAttributeNode));
+  FdAttrib.Send(A);
+end;
 
 function TIndexedLineSetNode.GetColor: TAbstractColorNode;
 begin
@@ -86,6 +103,16 @@ begin
   FdFogCoord.Send(Value);
 end;
 
+procedure TIndexedLineSetNode.SetColorIndex(const Value: array of LongInt);
+begin
+  FdColorIndex.Send(Value);
+end;
+
+procedure TIndexedLineSetNode.SetColorIndex(const Value: TLongIntList);
+begin
+  FdColorIndex.Send(Value);
+end;
+
 function TIndexedLineSetNode.GetColorPerVertex: boolean;
 begin
   Result := FdColorPerVertex.Value;
@@ -94,6 +121,16 @@ end;
 procedure TIndexedLineSetNode.SetColorPerVertex(const Value: boolean);
 begin
   FdColorPerVertex.Send(Value);
+end;
+
+procedure TIndexedLineSetNode.SetCoordIndex(const Value: array of LongInt);
+begin
+  FdCoordIndex.Send(Value);
+end;
+
+procedure TIndexedLineSetNode.SetCoordIndex(const Value: TLongIntList);
+begin
+  FdCoordIndex.Send(Value);
 end;
 
 {$endif read_implementation}

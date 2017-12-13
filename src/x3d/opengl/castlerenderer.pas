@@ -13,12 +13,13 @@
   ----------------------------------------------------------------------------
 }
 
-{ VRML/X3D low-level rendering (TGLRenderer).
-  You usually don't want to use this renderer directly, you should
-  rather use TCastleScene that wraps this renderer and gives you simple
+{ VRML / X3D low-level rendering (TGLRenderer).
+  You should never use this renderer directly,
+  you should always use TCastleScene that wraps this renderer and gives you simple
   method to render whole scene.
+  TODO: this unit should be renamed to Internal at some point.
 
-  The overview of this class can also be found in engine documentation
+  The overview of the renderer can also be found in engine documentation
   [http://castle-engine.sourceforge.net/engine_doc.php]
   in chapter "OpenGL rendering", section "Basic OpenGL rendering".
 
@@ -89,108 +90,30 @@
   This allows you to customize rendering by using normal OpenGL commands.
 
   @unorderedList(
-    @item(First of all, current matrix values (MODELVIEW,
-      PROJECTION and TEXTURE) affect our rendering as usual.
-
-      So you can move the rendered VRML model by normal OpenGL
-      matrix transformations, you can even affect rendered texture coords
-      by your own texture matrix etc.)
-
     @item(Current glPolygonMode.
-
-      Of course for normal rendering you want to render polygons
-      (both sides, GL_FRONT_AND_BACK) with GL_FILL. But you can change
-      it to get wireframe model view.)
+      This is used by @link(TCastleScene) to optionally render wireframe.
+    )
 
     @item(Blending settings (GL_BLEND enabled state, glBlendFunc),
       and glDepthMask.
 
-      These are typically controlled by higher-level renderer (Scene)
-      to allow rendering scenes with both tranparent and opaque objects.
-      Only such higher-level renderer may control them, as only it controls
-      the order of rendering shapes, which is important for rendering
-      tranparent shapes.)
-
-    @item(Current GL_FOG_HINT.
-
-      Just like for any other OpenGL program, you may want to set this
-      to GL_NICEST (if you have to render models that may look bad
-      when fog is interpolated without perspective correction).)
-
-    @item(glFrontFace is assumed to be CCW (OpenGL default) but not manipulated
-      by this unit anywhere.
-
-      So our normals passed to OpenGL always point from CCW side.
-      Even if you supplied in VRML file normals pointing from CW
-      (indicated e.g. by IndexedFaceSet.ccw = FALSE field in VRML 97),
-      we will internally invert them and pass inverted ones to OpenGL.
-      And when culling faces, we switch using @code(glCullFace(
-      GL_BACK / GL_FRONT)), not by switching front face.
-
-      Why so much work was done to always work with front face = CCW assumption?
-      Because this is very handy when you render mirrors by using
-      @code(Scale(1, 1, -1)) trick. See
-      [http://www.opengl.org/resources/code/samples/mjktips/Reflect.html]
-      and example program
-      @code(castle_game_engine/examples/vrml/plane_mirror_and_shadow.lpr).
-      With such strange scale, CCW and CW invert places. Sides that were
-      CCW normally are now CW. This means that you want to call @code(glFrontFace(GL_CW))
-      temporarily when rendering scene in the mirror. This way scene in the mirror
-      will have correct normals and backface culling.
-
-      Since we don't touch @code(glFrontFace) anywhere, this is possible to you.
-      And you can reuse resources for the scene in the mirror.
+      This is used by @link(TCastleScene) to render
+      scenes with a mix of tranparent and opaque objects.
+      Only @link(TCastleScene) deals with it (not this renderer),
+      as doing it correctly requires ordering the shapes.
     )
   )
 
-  @bold(Rendered TrianglesCount and VerticesCount:)
+  The renderer uses arrays in GPU-friendly format defined by TGeometryArrays.
 
-  This renderer uses the same triangles and vertices counts as
+  They have the same number of triangles and vertices as
   calculated by TAbstractGeometryNode.Triangulate,
   TAbstractGeometryNode.LocalTriangulate,
   TAbstractGeometryNode.TrianglesCount,
-  TAbstractGeometryNode.VerticesCount, with OverTriangulate = @true.
-
-  Note that it doesn't mean that we actually call TAbstractGeometryNode.Triangulate
-  for VRML rendering. In fact, currently we don't, and it allows us to be
-  much faster (for starters, rendering by indexes, or quad strips,
-  that would not be possible by generic implementation calling
-  TAbstractGeometryNode.Triangulate).
-  But our rendering methods generate the same triangles
-  as TAbstractGeometryNode.Triangulate.
-
-  Although for debug purposes, we have a renderer using
-  TShape.LocalTriangulate, see notes about
-  USE_VRML_TRIANGULATION in the source code.
+  TAbstractGeometryNode.VerticesCount (with OverTriangulate = @true).
 }
 
 unit CastleRenderer;
-
-{ When you define USE_VRML_TRIANGULATION, an alternative
-  rendering method will be used. Each node will be triangulated
-  using TShape.LocalTriangulate, and each generated triangle
-  will be passed to OpenGL.
-
-  This is usable only for TShape.LocalTriangulate testing.
-  - It's slower than the normal rendering method,
-    as triangles are passed to the OpenGL in the most naive immediate way,
-    without any vertex arrays or VBOs. In fact, it will not work with
-    OpenGL >= 3.
-  - Things that are not expressed as triangles
-    (IndexedLineSet, PointSet) will not be rendered at all.
-  - It lacks some features, because the triangulating routines
-    do not return enough information. For example, multi-texturing
-    does not work (correctly), as TTriangleEvent currently only passes
-    the coordinates for first texture unit.
-}
-{ $define USE_VRML_TRIANGULATION}
-
-{$ifdef USE_VRML_TRIANGULATION}
-  {$ifdef RELEASE}
-    {$fatal Undefine USE_VRML_TRIANGULATION for CastleRenderer,
-      you don't want to use this in RELEASE version. }
-  {$endif}
-{$endif}
 
 {$I castleconf.inc}
 
@@ -212,8 +135,7 @@ type
     const Vert: TVector3) of object;
 
   TShadersRendering = (srDisable, srWhenRequired, srAlways);
-  { Faces to cull (make invisible) during VRML/X3D rendering. }
-  TCullFace = (cfNone, cfCW, cfCCW);
+
   TBumpMapping = CastleRendererInternalShader.TBumpMapping;
   TLightRenderEvent = CastleRendererInternalLights.TLightRenderEvent;
 
@@ -262,11 +184,9 @@ type
   { Various properties that control rendering done
     with @link(TGLRenderer).
 
-    They are collected here,
-    in a class separate from @link(TGLRenderer),
-    because various things (like TCastleScene and TCastlePrecalculatedAnimation)
-    wrap @link(TGLRenderer) instances and hide it,
-    but still they want to allow user to change these attributes. }
+    They are collected here, in a class separate from @link(TGLRenderer),
+    to allow TCastleScene to hide internal @link(TGLRenderer) but still
+    expose @link(TRenderingAttributes) instance. }
   TRenderingAttributes = class(TPersistent)
   private
     FOnRadianceTransfer: TRadianceTransferFunction;
@@ -280,13 +200,15 @@ type
     FPointSize: TGLFloat;
     FLineWidth: TGLFloat;
     FBumpMapping: TBumpMapping;
-    FShaders: TShadersRendering;
     FCustomShader, FCustomShaderAlphaTest: TX3DShaderProgramBase;
     FMode: TRenderingMode;
     FVertexBufferObject: boolean;
     FShadowSampling: TShadowSampling;
     FVisualizeDepthMap: boolean;
     FDepthTest: boolean;
+    FPhongShading: boolean;
+    function GetShaders: TShadersRendering;
+    procedure SetShaders(const Value: TShadersRendering);
   protected
     { These methods just set the value on given property,
       eventually (some of them) calling ReleaseCachedResources.
@@ -301,7 +223,7 @@ type
     procedure SetShadowSampling(const Value: TShadowSampling); virtual;
     procedure SetVertexBufferObject(const Value: boolean); virtual;
     procedure SetVisualizeDepthMap(const Value: boolean); virtual;
-    procedure SetShaders(const Value: TShadersRendering); virtual;
+    procedure SetPhongShading(const Value: boolean); virtual;
     { @groupEnd }
 
     { Called before changing an attribute that requires the release
@@ -322,8 +244,8 @@ type
     const
       DefaultPointSize = 3.0;
       DefaultLineWidth = 2.0;
-      DefaultShaders = srWhenRequired;
       DefaultBumpMapping = bmSteepParallaxShadowing;
+      DefaultPhongShading = false;
 
     constructor Create; virtual;
 
@@ -444,29 +366,17 @@ type
       read FBumpMapping write SetBumpMapping default DefaultBumpMapping;
 
     { When GLSL shaders are used.
+      This is now a deprecated property, better use @link(PhongShading) to determine
+      the shading.
+      The engine auto-detects whether to use shaders based on OpenGL capabilities,
+      particular shape needs (phong shading, bump mapping, shadow maps, compositing shader effects),
+      and GLFeatures.EnableFixedFunction. }
+    property Shaders: TShadersRendering read GetShaders write SetShaders; deprecated 'use PhongShading';
 
-      @unorderedList(
-        @item(srDisable Never use shaders for anything.
-          This means that "shaders", "effects" VRML/X3D fields
-          are ignored, and various effects are disabled
-          (like shadow maps, bump mapping, screen effects).
-          No GLSL program is active, we always force fixed-function pipeline.)
-
-        @item(srWhenRequired Enable only for shapes that require it.
-          For shapes that don't strictly require shaders
-          (don't have ComposedShader, don't use shadow maps,
-          don't have any shader effects etc.) use fixed-function pipeline.)
-
-        @item(srAlways Enable for all shapes, render everything by GLSL shaders.
-          Everything will look beautiful (per-pixel lighting for all shapes),
-          but rendering may be slower.)
-      )
-
-      Note that Mode <> rmFull also disables all shaders.
-      That is, when Mode <> rmFull, the value of this property
-      doesn't matter, it's always treated like srDisable. }
-    property Shaders: TShadersRendering read FShaders write FShaders
-      default DefaultShaders;
+    { Whether to use Phong shading by default for all shapes.
+      Note that each shape may override it by @link(TAbstractShapeNode.Shading) field. }
+    property PhongShading: boolean read FPhongShading write SetPhongShading
+      default DefaultPhongShading;
 
     { Custom GLSL shader to use for the whole scene.
       When this is assigned, @link(Shaders) value is ignored.
@@ -893,7 +803,6 @@ type
       used by RenderShapeEnd. }
     TextureTransformUnitsUsedMore: TLongIntList;
 
-    FCullFace: TCullFace;
     FSmoothShading: boolean;
     FFixedFunctionLighting: boolean;
     FFixedFunctionAlphaTest: boolean;
@@ -921,15 +830,11 @@ type
       context capabilities to see if bump mapping can be used. }
     function BumpMapping: TBumpMapping;
 
-    procedure SetCullFace(const Value: TCullFace);
     procedure SetSmoothShading(const Value: boolean);
     procedure SetFixedFunctionLighting(const Value: boolean);
     procedure SetFixedFunctionAlphaTest(const Value: boolean);
     procedure SetLineType(const Value: TLineType);
 
-    { Change glCullFace and GL_CULL_FACE enabled by this property.
-      This way we avoid redundant state changes. }
-    property CullFace: TCullFace read FCullFace write SetCullFace;
     { Change glShadeModel by this property. }
     property SmoothShading: boolean read FSmoothShading write SetSmoothShading;
     { Change GL_LIGHTING enabled by this property. }
@@ -971,13 +876,6 @@ type
       out Enabled, Volumetric: boolean;
       out VolumetricDirection: TVector3;
       out VolumetricVisibilityStart: Single);
-
-    {$ifdef USE_VRML_TRIANGULATION}
-    procedure DrawTriangle(Shape: TObject;
-      const Position: TTriangle3;
-      const Normal: TTriangle3; const TexCoord: TTriangle4;
-      const Face: TFaceIndex);
-    {$endif}
 
     { If multitexturing available, this sets currently active texture unit.
       TextureUnit is newly active unit, this is added to GL_TEXTURE0.
@@ -1082,7 +980,11 @@ type
 
       NeedsRestoreViewport will be set to @true if viewport was
       (possibly) changed by this procedure (otherwise, NeedsRestoreViewport
-      will not be modified). }
+      will not be modified).
+
+      The given camera position, direction, up should be in world space
+      (that is, in TCastleSceneManager space,
+      not in space local to this TCastleScene). }
     procedure UpdateGeneratedTextures(Shape: TShape;
       TextureNode: TAbstractTextureNode;
       const Render: TRenderFromViewFunction;
@@ -1905,9 +1807,8 @@ begin
     end;
   end;
 
-  { We *must* have some GLSL shader on OpenGLES }
-  {$ifdef OpenGLES}
-  if Result.ShaderProgram = nil then
+  { We *must* have some GLSL shader when GLFeatures.EnableFixedFunction = false }
+  if (not GLFeatures.EnableFixedFunction) and (Result.ShaderProgram = nil) then
   begin
     try
       Result.ShaderProgram := TX3DGLSLProgram.Create(ARenderer);
@@ -1922,7 +1823,6 @@ begin
       end;
     end;
   end;
-  {$endif}
 
   if LogRendererCache and Log then
     WritelnLog('++', 'Shader program (hash %s): %d', [Result.Hash.ToString, Result.References]);
@@ -1992,10 +1892,10 @@ begin
   FPointSize := DefaultPointSize;
   FLineWidth := DefaultLineWidth;
   FBumpMapping := DefaultBumpMapping;
-  FShaders := DefaultShaders;
   FVertexBufferObject := true;
   FShadowSampling := DefaultShadowSampling;
   FDepthTest := true;
+  FPhongShading := DefaultPhongShading;
 end;
 
 procedure TRenderingAttributes.ReleaseCachedResources;
@@ -2102,9 +2002,22 @@ begin
   end;
 end;
 
+function TRenderingAttributes.GetShaders: TShadersRendering;
+begin
+  if PhongShading then
+    Result := srAlways
+  else
+    Result := srWhenRequired;
+end;
+
 procedure TRenderingAttributes.SetShaders(const Value: TShadersRendering);
 begin
-  FShaders := Value;
+  PhongShading := Value = srAlways;
+end;
+
+procedure TRenderingAttributes.SetPhongShading(const Value: boolean);
+begin
+  FPhongShading := Value;
 end;
 
 { TGLRenderer ---------------------------------------------------------- }
@@ -2411,7 +2324,7 @@ begin
     Attributes.EnableTextures and
     (Attributes.Mode = rmFull) and
     GLFeatures.UseMultiTexturing and
-    (TGLSLProgram.ClassSupport <> gsNone) then
+    (GLFeatures.Shaders <> gsNone) then
     Result := Attributes.BumpMapping else
     Result := bmNone;
 end;
@@ -2426,13 +2339,13 @@ end;
 
 procedure TGLRenderer.DisableTexture(const TextureUnit: Cardinal);
 begin
-  { TODO: what to do for Shader? We cannot disable texture later...
-    We should detect it, and do enable only when appropriate }
-
-  { This must be synchronized, and disable all that can be enabled
-    by TShape.EnableTexture }
-  ActiveTexture(TextureUnit);
-  DisableCurrentTexture;
+  if GLFeatures.EnableFixedFunction then
+  begin
+    { This must be synchronized, and disable all that can be enabled
+      by TShape.EnableTexture }
+    ActiveTexture(TextureUnit);
+    DisableCurrentTexture;
+  end;
 end;
 
 procedure TGLRenderer.DisableCurrentTexture;
@@ -2489,17 +2402,18 @@ begin
     {$endif}
   end;
 
-  { init our OpenGL state }
-  {$ifndef OpenGLES}
-  glMatrixMode(GL_MODELVIEW);
+  if GLFeatures.EnableFixedFunction then
+  begin
+    {$ifndef OpenGLES}
+    glMatrixMode(GL_MODELVIEW);
+
+    { Reset GL_TEXTURE_ENV, otherwise it may be left GL_COMBINE
+      after rendering X3D model using MultiTexture. }
+    glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
+    {$endif}
+  end;
 
   RenderContext.PointSize := Attributes.PointSize;
-
-  { Reset GL_TEXTURE_ENV, otherwise it may be left GL_COMBINE
-    after rendering X3D model using MultiTexture. }
-  glTexEnvi(GL_TEXTURE_ENV, GL_TEXTURE_ENV_MODE, GL_MODULATE);
-  {$endif}
-
   RenderContext.LineWidth := Attributes.LineWidth;
 
   if Beginning then
@@ -2511,13 +2425,9 @@ begin
   end else
     LineType := ltSolid;
 
-  { Initialize FCullFace, make sure OpenGL state is set as appropriate }
-  FCullFace := cfNone;
-  glDisable(GL_CULL_FACE);
-
   GLSetEnabled(GL_DEPTH_TEST, Beginning and Attributes.DepthTest);
 
-  if Attributes.Mode in [rmDepth, rmFull] then
+  if GLFeatures.EnableFixedFunction and (Attributes.Mode in [rmDepth, rmFull]) then
   begin
     {$ifndef OpenGLES}
     glDisable(GL_TEXTURE_GEN_S);
@@ -2540,7 +2450,7 @@ begin
     {$endif}
   end;
 
-  if Attributes.Mode = rmFull then
+  if GLFeatures.EnableFixedFunction and (Attributes.Mode = rmFull) then
   begin
     {$ifndef OpenGLES}
     glDisable(GL_COLOR_MATERIAL);
@@ -2597,14 +2507,20 @@ begin
 
     { - We always set diffuse material component from the color.
         This satisfies all cases.
-      - TShader.EnableMaterialFromColor
-        takes care of actually enabling COLOR_MATERIAL, it depends on
-        the setting below.
+      - TColorPerVertexCoordinateRenderer.RenderCoordinateBegin
+        takes care of actually enabling COLOR_MATERIAL, it assumes that
+        the state is as set below.
       - We never change glColorMaterial during rendering,
         so no need to call this in RenderEnd. }
     if Beginning then
       glColorMaterial(GL_FRONT_AND_BACK, GL_DIFFUSE);
     {$endif}
+  end else
+  begin
+    FSmoothShading := true;
+    if Beginning then
+      { Initialize FFixedFunctionLighting, make sure OpenGL state is appropriate }
+      FFixedFunctionLighting := Attributes.Lighting;
   end;
 end;
 
@@ -2616,10 +2532,13 @@ begin
 
   RenderCleanState(true);
 
-  { push matrix after RenderCleanState, to be sure we're in modelview mode }
-  {$ifndef OpenGLES}
-  glPushMatrix;
-  {$endif}
+  if GLFeatures.EnableFixedFunction then
+  begin
+    { push matrix after RenderCleanState, to be sure we're in modelview mode }
+    {$ifndef OpenGLES}
+    glPushMatrix;
+    {$endif}
+  end;
 
   Assert(FogNode = nil);
   Assert(not FogEnabled);
@@ -2639,46 +2558,75 @@ begin
   FogNode := nil;
   FogEnabled := false;
 
-  {$ifndef OpenGLES}
-  glPopMatrix;
-  {$endif}
+  if GLFeatures.EnableFixedFunction then
+  begin
+    {$ifndef OpenGLES}
+    glPopMatrix;
+    {$endif}
+  end;
 
   RenderCleanState(false);
 
+  { restore defaults }
+  RenderContext.CullFace := false;
+  RenderContext.FrontFaceCcw := true;
   TGLSLProgram.Current := nil;
 end;
 
-{$ifdef USE_VRML_TRIANGULATION}
-procedure TGLRenderer.DrawTriangle(Shape: TObject;
-  const Position: TTriangle3;
-  const Normal: TTriangle3; const TexCoord: TTriangle4;
-  const Face: TFaceIndex);
-var
-  I: Integer;
-begin
-  for I := 0 to 2 do
-  begin
-    glNormalv(Normal[I]);
-    glTexCoordv(TexCoord[I]);
-    glVertexv(Position[I]);
-  end;
-end;
-{$endif USE_VRML_TRIANGULATION}
-
 procedure TGLRenderer.RenderShape(Shape: TX3DRendererShape;
   Fog: IAbstractFogObject);
+
+  function ShapeMaybeUsesShadowMaps(Shape: TX3DRendererShape): boolean;
+  var
+    Tex, SubTexture: TX3DNode;
+  begin
+    Result := false;
+    if (Shape.Node <> nil) and
+       (Shape.Node.Appearance <> nil) then
+    begin
+      Tex := Shape.Node.Appearance.Texture;
+
+      if Tex is TGeneratedShadowMapNode then
+        Exit(true);
+
+      if Tex is TMultiTextureNode then
+      begin
+        for SubTexture in TMultiTextureNode(Tex).FdTexture.Items do
+          if SubTexture is TGeneratedShadowMapNode then
+            Exit(true);
+      end;
+    end;
+  end;
+
 var
+  PhongShading: boolean;
   Shader: TShader;
 begin
   { instead of TShader.Create, reuse existing PreparedShader for speed }
   Shader := PreparedShader;
   Shader.Clear;
 
+  { calculate PhongShading }
+  PhongShading := Attributes.PhongShading;
+  { if Shape specifies Shading = Gouraud or Phong, use it }
+  if Shape.Node <> nil then
+    if Shape.Node.Shading = shPhong then
+      PhongShading := true
+    else
+    if Shape.Node.Shading = shGouraud then
+      PhongShading := false;
+  { if some feature requires PhongShading, make it true }
+  if ShapeMaybeUsesPhongSurfaceTexture(Shape) or
+     ShapeMaybeUsesShadowMaps(Shape) then
+    PhongShading := true;
+
+  Shader.Initialize(PhongShading);
+
+  if PhongShading then
+    Shader.ShapeRequiresShaders := true;
+
   Shader.ShapeBoundingBox := Shape.BoundingBox;
   Shader.ShadowSampling := Attributes.ShadowSampling;
-  if (Shape.Node <> nil) and
-     (Shape.Node.Shading = shPhong) then
-    Shader.ShapeRequiresShaders := true;
   RenderShapeLineProperties(Shape, Fog, Shader);
 end;
 
@@ -2719,13 +2667,13 @@ procedure TGLRenderer.RenderShapeLights(Shape: TX3DRendererShape;
 var
   SceneLights: TLightInstancesList;
 begin
-  { All this is done before loading State.Transform.
-    The light renderer assumes current matrix contains only camera +
-    scene transform.
-
-    All this is done after setting Shader.MaterialSpecularColor
+  { This is done after setting Shader.MaterialSpecularColor
     by RenderMaterialsBegin,
     as MaterialSpecularColor must be already set during Shader.EnableLight. }
+
+  { Shape.ModelView is not yet multiplied by State.Transform,
+    and it contains only camera and scene transform. }
+  Shader.SceneModelView := Shape.ModelView;
 
   { When lighting is off (for either shaders or fixed-function),
     there is no point in setting up lights. }
@@ -2768,32 +2716,35 @@ const
 
       VisibilityRangeScaled := Node.FdVisibilityRange.Value * Node.TransformScale;
 
-      {$ifndef OpenGLES}
-      { This code really does not need to be executed on OpenGLES at all,
-        where we know that fog coord is possible and will be realized by passing
-        castle_FogCoord to shader. }
+      if GLFeatures.EnableFixedFunction then
+      begin
+        {$ifndef OpenGLES}
+        { This code does not need to be executed on shader pipeline at all,
+          where we know that fog coord is possible and will be realized by passing
+          castle_FogCoord to shader. }
 
-      if Node.FdVolumetric.Value and (not GLFeatures.EXT_fog_coord) then
-      begin
-        { Try to make normal fog that looks similar. This looks poorly,
-          but it's not a real problem --- EXT_fog_coord is supported
-          on all sensible GPUs nowadays. Increasing VisibilityRangeScaled
-          seems enough. }
-        WritelnWarning('VRML/X3D', 'Volumetric fog not supported, your graphic card (OpenGL) doesn''t support EXT_fog_coord');
-        VisibilityRangeScaled := VisibilityRangeScaled * 5;
-      end;
+        if Node.FdVolumetric.Value and (not GLFeatures.EXT_fog_coord) then
+        begin
+          { Try to make normal fog that looks similar. This looks poorly,
+            but it's not a real problem --- EXT_fog_coord is supported
+            on all sensible GPUs nowadays. Increasing VisibilityRangeScaled
+            seems enough. }
+          WritelnWarning('VRML/X3D', 'Volumetric fog not supported, your graphic card (OpenGL) doesn''t support EXT_fog_coord');
+          VisibilityRangeScaled := VisibilityRangeScaled * 5;
+        end;
 
-      if Volumetric then
-      begin
-        glFogi(GL_FOG_COORDINATE_SOURCE_EXT, GL_FOG_COORDINATE_EXT);
-      end else
-      begin
-        { If not Volumetric but still GL_EXT_fog_coord, we make sure
-          that we're *not* using FogCoord below. }
-        if GLFeatures.EXT_fog_coord then
-          glFogi(GL_FOG_COORDINATE_SOURCE_EXT, GL_FRAGMENT_DEPTH_EXT);
+        if Volumetric then
+        begin
+          glFogi(GL_FOG_COORDINATE_SOURCE_EXT, GL_FOG_COORDINATE_EXT);
+        end else
+        begin
+          { If not Volumetric but still GL_EXT_fog_coord, we make sure
+            that we're *not* using FogCoord below. }
+          if GLFeatures.EXT_fog_coord then
+            glFogi(GL_FOG_COORDINATE_SOURCE_EXT, GL_FRAGMENT_DEPTH_EXT);
+        end;
+        {$endif}
       end;
-      {$endif}
 
       { calculate FogType and other Fog parameters }
       FogType := Node.FogType;
@@ -2814,29 +2765,34 @@ begin
     RenderFog(FogNode, FogVolumetric,
       FogVolumetricDirection, FogVolumetricVisibilityStart);
 
-    {$ifndef OpenGLES}
-    { Set fixed-function fog parameters, also accessed by GLSL using gl_xxx
-      on desktop OpenGL. }
-    if FogEnabled then
+    if GLFeatures.EnableFixedFunction then
     begin
-      glFogv(GL_FOG_COLOR, Vector4(FogColor, 1.0));
-      case FogType of
-        ftLinear:
-          begin
-            glFogi(GL_FOG_MODE, GL_LINEAR);
-            glFogf(GL_FOG_START, 0);
-            glFogf(GL_FOG_END, FogLinearEnd);
-          end;
-        ftExp: begin
-            glFogi(GL_FOG_MODE, GL_EXP);
-            glFogf(GL_FOG_DENSITY, FogExpDensity);
-          end;
-        else raise EInternalError.Create('TGLRenderer.RenderShapeFog:FogType? 2');
-      end;
-      glEnable(GL_FOG);
-    end else
-      glDisable(GL_FOG);
-    {$endif}
+      {$ifndef OpenGLES}
+      { Set fixed-function fog parameters. }
+      if FogEnabled then
+      begin
+        glFogv(GL_FOG_COLOR, Vector4(FogColor, 1.0));
+        case FogType of
+          ftLinear:
+            begin
+              glFogi(GL_FOG_MODE, GL_LINEAR);
+              glFogf(GL_FOG_START, 0);
+              glFogf(GL_FOG_END, FogLinearEnd);
+            end;
+          ftExp: begin
+              glFogi(GL_FOG_MODE, GL_EXP);
+              glFogf(GL_FOG_DENSITY, FogExpDensity);
+            end;
+          else raise EInternalError.Create('TGLRenderer.RenderShapeFog:FogType? 2');
+        end;
+        { We want to be able to render any scene --- so we have to be prepared
+          that fog interpolation has to be corrected for perspective. }
+        glHint(GL_FOG_HINT, GL_NICEST);
+        glEnable(GL_FOG);
+      end else
+        glDisable(GL_FOG);
+      {$endif}
+    end;
   end;
 
   if FogEnabled then
@@ -2870,9 +2826,12 @@ begin
   if (State.ShapeNode = nil { VRML 1.0, always some texture transform }) or
      (State.ShapeNode.TextureTransform <> nil { VRML 2.0 with tex transform }) then
   begin
-    {$ifndef OpenGLES}
-    glMatrixMode(GL_TEXTURE);
-    {$endif}
+    if GLFeatures.EnableFixedFunction then
+    begin
+      {$ifndef OpenGLES}
+      glMatrixMode(GL_TEXTURE);
+      {$endif}
+    end;
 
     { We work assuming that texture matrix before RenderShape was identity.
       Texture transform encoded in VRML/X3D will be multiplied by this.
@@ -2903,13 +2862,15 @@ begin
       if FirstTexUnit < GLFeatures.MaxTextureUnits then
       begin
         TextureTransformUnitsUsed := 1;
-        {$ifndef OpenGLES}
-        ActiveTexture(FirstTexUnit);
-        glPushMatrix;
-        glMultMatrix(State.TextureTransform);
-        {$else}
+        if GLFeatures.EnableFixedFunction then
+        begin
+          {$ifndef OpenGLES}
+          ActiveTexture(FirstTexUnit);
+          glPushMatrix;
+          glMultMatrix(State.TextureTransform);
+          {$endif}
+        end;
         Shader.EnableTextureTransform(FirstTexUnit, State.TextureTransform);
-        {$endif}
       end;
     end else
     begin
@@ -2928,10 +2889,13 @@ begin
 
           for I := 0 to TextureTransformUnitsUsed - 1 do
           begin
-            {$ifndef OpenGLES}
-            ActiveTexture(FirstTexUnit + I);
-            glPushMatrix;
-            {$endif}
+            if GLFeatures.EnableFixedFunction then
+            begin
+              {$ifndef OpenGLES}
+              ActiveTexture(FirstTexUnit + I);
+              glPushMatrix;
+              {$endif}
+            end;
             Child := Transforms[I];
             if (Child <> nil) and
                (Child is TAbstractTextureTransformNode) then
@@ -2940,11 +2904,13 @@ begin
                 WritelnWarning('VRML/X3D', 'MultiTextureTransform.textureTransform list cannot contain another MultiTextureTransform instance') else
               begin
                 Matrix := TAbstractTextureTransformNode(Child).TransformMatrix;
-                {$ifndef OpenGLES}
-                glMultMatrix(Matrix);
-                {$else}
+                if GLFeatures.EnableFixedFunction then
+                begin
+                  {$ifndef OpenGLES}
+                  glMultMatrix(Matrix);
+                  {$endif}
+                end;
                 Shader.EnableTextureTransform(FirstTexUnit + I, Matrix);
-                {$endif}
               end;
             end;
           end;
@@ -2965,51 +2931,59 @@ begin
           begin
             TextureTransformUnitsUsed := 1;
             Matrix := TextureTransform.TransformMatrix;
-            {$ifndef OpenGLES}
-            ActiveTexture(FirstTexUnit);
-            glPushMatrix;
-            glMultMatrix(Matrix);
-            {$else}
+            if GLFeatures.EnableFixedFunction then
+            begin
+              {$ifndef OpenGLES}
+              ActiveTexture(FirstTexUnit);
+              glPushMatrix;
+              glMultMatrix(Matrix);
+              {$endif}
+            end;
             Shader.EnableTextureTransform(FirstTexUnit, Matrix);
-            {$endif}
           end;
         end;
       end;
     end;
 
-    {$ifndef OpenGLES}
-    { restore GL_MODELVIEW }
-    glMatrixMode(GL_MODELVIEW);
-    {$endif}
+    if GLFeatures.EnableFixedFunction then
+    begin
+      {$ifndef OpenGLES}
+      { restore GL_MODELVIEW }
+      glMatrixMode(GL_MODELVIEW);
+      {$endif}
+    end;
   end;
 
   RenderShapeClipPlanes(Shape, Fog, Shader, MaterialOpacity, Lighting);
 
-  {$ifndef OpenGLES}
-  if (TextureTransformUnitsUsed <> 0) or
-     (TextureTransformUnitsUsedMore.Count <> 0) then
+  if GLFeatures.EnableFixedFunction then
   begin
-    glMatrixMode(GL_TEXTURE);
-
-    for I := 0 to TextureTransformUnitsUsed - 1 do
+    {$ifndef OpenGLES}
+    if (TextureTransformUnitsUsed <> 0) or
+       (TextureTransformUnitsUsedMore.Count <> 0) then
     begin
-      { This code is Ok also when not GLFeatures.UseMultiTexturing: then
-        TextureTransformUnitsUsed for sure is <= 1 and ActiveTexture
-        will be simply ignored. }
-      ActiveTexture(FirstTexUnit + I);
-      glPopMatrix;
-    end;
+      glMatrixMode(GL_TEXTURE);
 
-    for I := 0 to TextureTransformUnitsUsedMore.Count - 1 do
-    begin
-      ActiveTexture(TextureTransformUnitsUsedMore.List^[I]);
-      glPopMatrix;
-    end;
+      for I := 0 to TextureTransformUnitsUsed - 1 do
+      begin
+        { This code is Ok also when not GLFeatures.UseMultiTexturing: then
+          TextureTransformUnitsUsed for sure is <= 1 and ActiveTexture
+          will be simply ignored. }
+        ActiveTexture(FirstTexUnit + I);
+        glPopMatrix;
+      end;
 
-    { restore GL_MODELVIEW }
-    glMatrixMode(GL_MODELVIEW);
+      for I := 0 to TextureTransformUnitsUsedMore.Count - 1 do
+      begin
+        ActiveTexture(TextureTransformUnitsUsedMore.List^[I]);
+        glPopMatrix;
+      end;
+
+      { restore GL_MODELVIEW }
+      glMatrixMode(GL_MODELVIEW);
+    end;
+    {$endif}
   end;
-  {$endif}
 end;
 
 procedure TGLRenderer.RenderShapeClipPlanes(Shape: TX3DRendererShape;
@@ -3039,31 +3013,23 @@ var
         begin
           Assert(ClipPlanesEnabled < GLFeatures.MaxClipPlanes);
 
-          { Nope, you should *not* multiply
-            ClipPlane^.Transform * plane yourself.
-            The plane equation cannot be transformed in the same way
-            as you transform normal 4D vertex/direction (Matrix * vector).
-            E.g. translating a plane this way, with a standard translation
-            matrix, would make nonsense plane as a result.
-            This much I understand :)
+          { Note: do *not* multiply
 
-            So what OpenGL does? Some voodoo to allow you to specify
-            plane equation in local (in current modelview) space,
-            and not worry about the math :)
-            http://www2.imm.dtu.dk/~jab/texgen.pdf sheds some light on this.
+              ClipPlane^.Transform * ClipPlane^.Node.Plane
+
+            The plane equation cannot be transformed like that,
+            it's not a 4D vertex / direction.
+
+            OpenGL does smart calculatations such that we can
+            provide modelview matrix, and then specify
+            plane equation in the local space.
+            See e.g. http://www2.imm.dtu.dk/~jab/texgen.pdf .
             glClipPlane docs say that glClipPlane is multiplied by
             the *inverse* of modelview. The wording is crucial here:
             plane is multiplied by the matrix, not the other way around. }
 
-          {$ifndef OpenGLES} // TODO-es
-          glPushMatrix;
-            glMultMatrix(ClipPlane^.Transform);
-            glClipPlane(GL_CLIP_PLANE0 + ClipPlanesEnabled,
-              Vector4Double(ClipPlane^.Node.FdPlane.Value));
-            Shader.EnableClipPlane(ClipPlanesEnabled);
-          glPopMatrix;
-          {$endif}
-
+          Shader.EnableClipPlane(ClipPlanesEnabled,
+            ClipPlane^.Transform, ClipPlane^.Node.FdPlane.Value);
           Inc(ClipPlanesEnabled);
 
           { No more clip planes possible, regardless if there are any more
@@ -3087,13 +3053,19 @@ begin
   ClipPlanesBegin(Shape.State.ClipPlanes);
 
   {$ifndef OpenGLES}
-  glPushMatrix;
-    glMultMatrix(Shape.State.Transform);
+  if GLFeatures.EnableFixedFunction then
+  begin
+    glPushMatrix;
+      glMultMatrix(Shape.State.Transform);
+  end;
   {$endif}
+
     Shape.ModelView := Shape.ModelView * Shape.State.Transform;
     RenderShapeCreateMeshRenderer(Shape, Fog, Shader, MaterialOpacity, Lighting);
+
   {$ifndef OpenGLES}
-  glPopMatrix;
+  if GLFeatures.EnableFixedFunction then
+    glPopMatrix;
   {$endif}
 
   ClipPlanesEnd;
@@ -3130,7 +3102,6 @@ begin
   ShapeBumpMappingAllowed := false;
   ShapeBumpMappingUsed := false;
 
-  {$ifndef USE_VRML_TRIANGULATION}
   { Initalize MeshRenderer to something non-nil. }
   if not InitMeshRenderer then
   begin
@@ -3140,9 +3111,6 @@ begin
   end;
 
   Assert(MeshRenderer <> nil);
-  {$else}
-  MeshRenderer := nil;
-  {$endif}
 
   try
     RenderShapeShaders(Shape, Fog, Shader, MaterialOpacity, Lighting,
@@ -3377,13 +3345,6 @@ var
   CoordinateRenderer: TBaseCoordinateRenderer;
   VBO: boolean;
 begin
-  {$ifdef USE_VRML_TRIANGULATION}
-  { Simple rendering using LocalTriangulate. }
-  glBegin(GL_TRIANGLES);
-  Shape.LocalTriangulate(true, @DrawTriangle);
-  glEnd;
-  {$else}
-
   { initialize TBaseCoordinateRenderer.Arrays now }
   if GeneratorClass <> nil then
   begin
@@ -3449,8 +3410,6 @@ begin
     glBindBuffer(GL_ARRAY_BUFFER, 0);
     glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
   end;
-
-  {$endif USE_VRML_TRIANGULATION}
 end;
 
 {$ifndef OpenGLES}
@@ -3463,7 +3422,8 @@ begin
   if (TexUnit >= TextureTransformUnitsUsed) and
      (TextureTransformUnitsUsedMore.IndexOf(TexUnit) = -1) then
   begin
-    glPushMatrix;
+    if GLFeatures.EnableFixedFunction then
+      glPushMatrix;
 
     { Simple implementation would just add always TexUnit
       to TextureTransformUnitsUsedMore. But there are optimizations possible,
@@ -3603,26 +3563,6 @@ begin
     UpdateGeneratedShadowMap(TGeneratedShadowMapNode(TextureNode)) else
   if TextureNode is TRenderedTextureNode then
     UpdateRenderedTexture(TRenderedTextureNode(TextureNode));
-end;
-
-procedure TGLRenderer.SetCullFace(const Value: TCullFace);
-begin
-  if FCullFace <> Value then
-  begin
-    FCullFace := Value;
-
-    { We do not want to touch OpenGL glFrontFace (this will be useful
-      for planar mirrors, where caller should be able to control glFrontFace).
-      So we use only glCullFace. We assume that glFrontFace = always CCW,
-      so we know how to call glCullFace. }
-
-    case Value of
-      cfNone: glDisable(GL_CULL_FACE);
-      cfCW:  begin glCullFace(GL_BACK);  glEnable(GL_CULL_FACE); end;
-      cfCCW: begin glCullFace(GL_FRONT); glEnable(GL_CULL_FACE); end;
-      else raise EInternalError.Create('SetCullFace:Value?');
-    end;
-  end;
 end;
 
 procedure TGLRenderer.SetSmoothShading(const Value: boolean);
